@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 
 from geopy.geocoders import Nominatim
 from openai import OpenAI
-from timezonefinder import TimezoneFinder
 
 try:
     from lunardate import LunarDate
@@ -393,19 +392,109 @@ def resolve_timezone(place: str) -> tuple[str, str, str]:
 @lru_cache(maxsize=256)
 def _resolve_timezone_cached(place: str) -> tuple[str, str, str]:
     geolocator = Nominatim(user_agent="madame-damn-space", timeout=8)
-    tf = TimezoneFinder()
 
     try:
-        location = geolocator.geocode(place)
+        location = geolocator.geocode(place, addressdetails=True)
         if location:
-            timezone_name = tf.timezone_at(lng=location.longitude, lat=location.latitude)
+            timezone_name = estimate_timezone_name(
+                latitude=location.latitude,
+                longitude=location.longitude,
+                address=(location.raw or {}).get("address", {}),
+            )
             if timezone_name:
                 coordinates = f"{location.latitude:.4f}, {location.longitude:.4f}"
-                return timezone_name, "geocoded", coordinates
+                return timezone_name, "estimated from geocoded place", coordinates
     except Exception:
         pass
 
     return "UTC", "fallback", "unknown"
+
+
+def estimate_timezone_name(*, latitude: float, longitude: float, address: dict) -> str:
+    country_code = str(address.get("country_code", "")).lower()
+    state = str(address.get("state", "")).lower()
+
+    if country_code == "id":
+        if longitude < 112:
+            return "Asia/Jakarta"
+        if longitude < 127:
+            return "Asia/Makassar"
+        return "Asia/Jayapura"
+
+    if country_code == "my":
+        return "Asia/Kuala_Lumpur"
+    if country_code == "sg":
+        return "Asia/Singapore"
+    if country_code == "ph":
+        return "Asia/Manila"
+    if country_code == "th":
+        return "Asia/Bangkok"
+    if country_code == "vn":
+        return "Asia/Ho_Chi_Minh"
+    if country_code == "jp":
+        return "Asia/Tokyo"
+    if country_code == "kr":
+        return "Asia/Seoul"
+    if country_code == "cn":
+        return "Asia/Shanghai"
+    if country_code == "in":
+        return "Asia/Kolkata"
+    if country_code == "ae":
+        return "Asia/Dubai"
+    if country_code == "gb":
+        return "Europe/London"
+    if country_code == "fr":
+        return "Europe/Paris"
+    if country_code == "de":
+        return "Europe/Berlin"
+    if country_code == "nl":
+        return "Europe/Amsterdam"
+    if country_code == "au":
+        if "western australia" in state or longitude < 129:
+            return "Australia/Perth"
+        if "northern territory" in state:
+            return "Australia/Darwin"
+        if "south australia" in state:
+            return "Australia/Adelaide"
+        if "queensland" in state:
+            return "Australia/Brisbane"
+        if "new south wales" in state or "victoria" in state or "tasmania" in state or longitude >= 141:
+            return "Australia/Sydney"
+    if country_code == "us":
+        if state == "alaska" or longitude <= -141:
+            return "America/Anchorage"
+        if state == "hawaii" or longitude <= -151:
+            return "Pacific/Honolulu"
+        if longitude <= -115:
+            return "America/Los_Angeles"
+        if longitude <= -101:
+            return "America/Denver"
+        if longitude <= -85:
+            return "America/Chicago"
+        return "America/New_York"
+    if country_code == "ca":
+        if longitude <= -120:
+            return "America/Vancouver"
+        if longitude <= -105:
+            return "America/Edmonton"
+        if longitude <= -90:
+            return "America/Winnipeg"
+        if longitude <= -67:
+            return "America/Toronto"
+        return "America/Halifax"
+    if country_code == "br":
+        if longitude <= -50:
+            return "America/Manaus"
+        if longitude <= -35:
+            return "America/Sao_Paulo"
+        return "America/Recife"
+
+    offset_hours = max(-12, min(14, round(longitude / 15)))
+    if offset_hours == 0:
+        return "UTC"
+
+    etc_sign = "-" if offset_hours > 0 else "+"
+    return f"Etc/GMT{etc_sign}{abs(offset_hours)}"
 
 
 def estimate_lunar_date(value: date) -> str:
