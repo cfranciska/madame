@@ -278,9 +278,7 @@ TIME_OPTIONS = ["Tidak Tahu"] + [f"{hour:02d}:{minute:02d}" for hour in range(24
 SECTION_ORDER = [
     "BaZi",
     "Western Astrology",
-    "Zi Wei Dou Shu",
     "Numerologi",
-    "Vedic Astrology",
     "Intinya",
 ]
 
@@ -396,7 +394,7 @@ def main() -> None:
             <img class="hero-image" src="data:image/png;base64,{header_image}" alt="madame, damn! header">
             <div class="hero-subtitle-wrap">
                 <p class="hero-subtitle" style="font-size: 10px; line-height: 1.5; color: #ff2e93; font-weight: 500; margin-top: 0.55rem;">
-                    Ringkas dan playful. Menghadirkan berbagai ramalan menurut BaZi, western astrology, Zi Wei Dou Shu, numerologi, dan vendic astrology.
+                    Ringkas dan playful. Menghadirkan ramalan menurut BaZi, western astrology, dan numerologi, lalu dirangkum jadi inti yang saling melengkapi.
                 </p>
             </div>
         </section>

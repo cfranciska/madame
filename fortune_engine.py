@@ -25,9 +25,7 @@ class FortuneError(Exception):
 SECTION_ORDER = [
     "BaZi",
     "Western Astrology",
-    "Zi Wei Dou Shu",
     "Numerologi",
-    "Vedic Astrology",
     "Intinya",
 ]
 
@@ -36,12 +34,10 @@ DEFAULT_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "")
 DEFAULT_OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
 DEFAULT_OPENAI_RETRY_COUNT = int(os.getenv("OPENAI_RETRY_COUNT", "3"))
 DEFAULT_OPENAI_SDK_RETRIES = int(os.getenv("OPENAI_SDK_RETRIES", "2"))
-SYSTEM_PROMPT = """Anda adalah peramal profesional multidisiplin yang menggabungkan lima sistem ramalan klasik:
+SYSTEM_PROMPT = """Anda adalah peramal profesional multidisiplin yang menggabungkan tiga sistem ramalan:
 BaZi
 Western Astrology
-Zi Wei Dou Shu
 Numerologi
-Vedic Astrology
 
 Gunakan input pengguna berikut:
 * Tanggal lahir
@@ -53,7 +49,7 @@ Gunakan input pengguna berikut:
   * Minggu ini
   * Tahun ini
 
-Tujuan Anda adalah menghasilkan ramalan singkat, konsisten, dan mudah dipahami berdasarkan lima sistem ramalan tersebut.
+Tujuan Anda adalah menghasilkan ramalan singkat, mudah dipahami, dan terasa hidup berdasarkan tiga sistem ramalan tersebut.
 
 TUGAS
 Buat ramalan sesuai periode yang dipilih pengguna.
@@ -67,10 +63,6 @@ Gunakan aturan berikut:
 BaZi
 Konversi tanggal dan jam lahir dari kalender Gregorian ke kalender Cina lunisolar.
 Gunakan empat pilar: tahun, bulan, hari, dan jam.
-Zi Wei Dou Shu
-Gunakan kalender Cina lunisolar dan jam lokal untuk menentukan struktur chart.
-Vedic Astrology
-Gunakan sistem zodiak sidereal dan sesuaikan dengan zona waktu tempat lahir.
 Western Astrology
 Gunakan kalender Gregorian dan sistem zodiak tropical.
 Numerologi
@@ -117,7 +109,6 @@ Gunakan aturan berikut:
 * Hindari istilah teknis kompleks
 * Hindari jargon astrologi atau metafisika
 * Hindari pengulangan kalimat antar sistem
-* Hindari kontradiksi antar sistem
 
 BATASAN KEAMANAN
 Jangan membuat prediksi tentang:
@@ -130,13 +121,14 @@ Jangan membuat prediksi tentang:
 * klaim supranatural absolut
 Gunakan bahasa yang bersifat kemungkinan, arah, atau kecenderungan. Kalau ada hal negatif, bisa dikasih 'hint' saja agar waspada.
 
-KONSISTENSI OUTPUT
-Semua ramalan harus:
-* relevan dengan periode yang dipilih
-* tidak saling bertentangan
-* tidak generik
-* tidak berulang
-Setiap sistem harus terasa unik dalam sudut pandang, bukan sekadar variasi kata.
+ATURAN OUTPUT
+Keluarkan tepat empat bagian:
+* BaZi
+* Western Astrology
+* Numerologi
+* Intinya
+Tiga bagian pertama boleh punya sudut pandang yang berbeda dan tidak harus sepenuhnya selaras.
+Bagian "Intinya" wajib terasa seperti rangkuman yang menyatukan semuanya secara saling melengkapi.
 """
 
 
@@ -298,7 +290,6 @@ def generate_fallback_fortune(
     focus_label = focus_map.get(question_focus, "arah hidup secara umum")
     period_phrase = period_map.get(period_key, period_label.lower())
     sign = context.western_sign
-    vedic_sign = context.vedic_sign_estimate
     life_path = context.life_path_number
     personal_year = context.personal_year_number
     bazi_hint = context.bazi_estimate.split(",")[0].replace("Tahun ", "")
@@ -307,7 +298,6 @@ def generate_fallback_fortune(
         if is_birth_time_known and birth_time is not None
         else "karena jam lahir belum diketahui, bacaan ini sengaja dibikin lebih fleksibel"
     )
-    place_hint = describe_place_energy(context.birth_place, context.timezone_name)
     momentum = pick_variant(
         "momentum",
         birth_date.isoformat(),
@@ -337,14 +327,6 @@ def generate_fallback_fortune(
         context.zi_wei_estimate,
         question_focus,
     )
-    anchor = pick_variant(
-        "anchor",
-        birth_place.lower(),
-        context.timezone_name,
-        str(life_path),
-        str(personal_year),
-    )
-
     sections = {
         "BaZi": (
             f"BaZi kamu buat {period_phrase} kebaca lebih {momentum}. "
@@ -355,22 +337,13 @@ def generate_fallback_fortune(
             f"Sebagai {sign}, kamu lagi lebih kuat kalau maunya dibikin kelihatan, bukan disimpan rapi di kepala. "
             f"Untuk {period_phrase}, peluang biasanya kebuka waktu kamu pilih gaya {social_mode} saat ngurus {focus_label}."
         ),
-        "Zi Wei Dou Shu": (
-            f"Zi Wei Dou Shu estimasimu nunjukin ritme yang lebih enak kalau tenaga ditaruh ke hal yang jelas efeknya. "
-            f"Di {period_phrase}, dorongan terbaik datang dari {anchor} buat urusan {focus_label}, bukan dari langkah yang terlalu penuh gaya."
-        ),
         "Numerologi": (
             f"Life path {life_path} ketemu personal year {personal_year} bikin tema kamu sekarang condong ke pola yang lebih dewasa dan kepakai lama. "
             f"Buat {focus_label}, pilih langkah yang {caution}, bukan yang cuma seru di awal."
         ),
-        "Vedic Astrology": (
-            f"Nuansa {vedic_sign} kasih sinyal kalau timing kamu lagi nyambung saat kepala nggak terlalu ramai. "
-            f"Di {period_phrase}, {place_hint}; dari situ insting soal {focus_label} biasanya jadi lebih gampang dipercaya."
-        ),
         "Intinya": (
-            f"Madame bilang: {period_phrase} ini paling cakep kalau kamu mainnya {strategy}, bukan reaktif. "
-            f"Rapihin prioritas, ambil langkah yang {momentum}, dan biarin hasilnya naik dari konsistensi. "
-            f"Nggak usah ribet buat tetap kelihatan mahal."
+            f"Madame bilang: dari tiga bacaan ini, benang merahnya ada di cara kamu nyusun ritme, nunjukkin maumu, dan jaga langkah yang realistis. "
+            f"Untuk {period_phrase}, pakai yang paling nyambung buat {focus_label}, lalu biarin sisanya jadi pelengkap, bukan rebutan."
         ),
     }
     return {section: trim_words(text, limit=50) for section, text in sections.items()}
@@ -406,30 +379,11 @@ def pick_variant(bucket: str, *parts: str) -> str:
             "lebih stabil daripada heboh",
             "masuk akal buat diulang terus",
         ],
-        "anchor": [
-            "merapikan jadwal dan orang yang kamu kasih akses",
-            "milih satu prioritas lalu jagain fokusnya",
-            "ngurangin distraksi sebelum mutusin langkah berikutnya",
-            "nahan diri buat nggak jawab semua hal sekaligus",
-            "balik ke rutinitas yang bikin kamu terasa nyambung lagi",
-        ],
     }
     pool = variants[bucket]
     seed = "|".join(part.strip().lower() for part in parts if part).encode("utf-8")
     digest = hashlib.sha256(seed).hexdigest()
     return pool[int(digest[:8], 16) % len(pool)]
-
-
-def describe_place_energy(place: str, timezone_name: str) -> str:
-    cleaned_place = place.strip()
-    if not cleaned_place:
-        return "coba pakai patokan yang sederhana dulu"
-    city = cleaned_place.split(",")[0].strip()
-    if timezone_name == "UTC":
-        return f"karena lokasi {city} belum kebaca presisi, pakai sinyal yang paling konsisten dulu"
-    return f"nuansa tempat asalmu di {city} bikin kamu lebih peka sama ritme sekitar"
-
-
 def request_fortune_completion(
     *,
     api_key: str,
@@ -805,23 +759,22 @@ Input pengguna:
 Konversi dan estimasi internal:
 - Tanggal lunisolar estimasi: {context.lunar_date}
 - BaZi estimasi: {context.bazi_estimate}
-- Zi Wei Dou Shu estimasi: {context.zi_wei_estimate}
 - Zodiak Western tropical: {context.western_sign}
-- Zodiak Vedic sidereal estimasi: {context.vedic_sign_estimate}
 - Life path numerologi: {context.life_path_number}
 - Personal year numerologi untuk tahun berjalan: {context.personal_year_number}
 
 Instruksi output:
 - Keluarkan JSON object valid saja.
-- Gunakan tepat enam key berikut:
-  "BaZi", "Western Astrology", "Zi Wei Dou Shu", "Numerologi", "Vedic Astrology", "Intinya"
+- Gunakan tepat empat key berikut:
+  "BaZi", "Western Astrology", "Numerologi", "Intinya"
 - Nilai tiap key berupa satu paragraf singkat berbahasa Indonesia.
 - Maksimal 50 kata per bagian.
 - Jangan tampilkan teori, perhitungan, atau disclaimer teknis.
 - Semua bagian harus konsisten terhadap periode {period_label}.
 - Semua bagian harus menyesuaikan fokus pertanyaan {question_focus}. Jika fokusnya "Umum", jaga tetap luas dan seimbang.
 - Jika jam lahir tidak diketahui, jangan mengarang detail yang seolah sangat presisi dari posisi jam.
-- Untuk key "Intinya", rangkum lima bagian sebelumnya dalam satu paragraf maksimal 50 kata, dengan tone sangat uplifting dan cheeky.
+- Tiga bagian pertama boleh saling beda sudut pandang dan tidak harus terasa sepenuhnya harmonis.
+- Untuk key "Intinya", rangkum tiga bagian sebelumnya dalam satu paragraf maksimal 50 kata, dengan tone sangat uplifting dan cheeky, terasa menyatukan semuanya.
 """
 
 

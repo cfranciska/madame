@@ -14,9 +14,7 @@ pinned: false
 
 - BaZi
 - Western Astrology
-- Zi Wei Dou Shu
 - Numerologi
-- Vedic Astrology
 - Intinya
 
 ## Input
@@ -79,4 +77,4 @@ Jangan commit `.streamlit/secrets.toml`. Secret itu hanya untuk local run.
 
 - Tempat lahir dicoba di-normalisasi ke zona waktu dengan geocoding. Jika gagal, app memakai fallback estimasi yang konsisten.
 - Jika jam lahir `Tidak Tahu`, engine akan memperlakukan jam lahir sebagai `unknown`, bukan memaksakan `12:00`.
-- Output ditampilkan dalam enam bagian tetap, sesuai urutan UI.
+- Output ditampilkan dalam empat bagian tetap, sesuai urutan UI.
