@@ -261,6 +261,14 @@ SECTION_ORDER = [
 ]
 
 
+def ensure_app_state() -> None:
+    st.session_state.setdefault("forecast_result", None)
+    st.session_state.setdefault("forecast_birth_label", "")
+    st.session_state.setdefault("forecast_place", "")
+    st.session_state.setdefault("forecast_notice", None)
+    st.session_state.setdefault("forecast_error_detail", None)
+
+
 def get_setting(name: str, default: str = "") -> str:
     value = os.getenv(name)
     if value:
@@ -343,6 +351,7 @@ def parse_birth_time(label: str) -> tuple[time | None, bool]:
 
 
 def main() -> None:
+    ensure_app_state()
     header_image = encode_image("header.png")
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.markdown(
@@ -396,93 +405,118 @@ def main() -> None:
 
             submitted = st.form_submit_button("Buka ramalannya", use_container_width=True)
 
-    if not submitted:
-        return
+    if submitted:
+        st.session_state["forecast_result"] = None
+        st.session_state["forecast_birth_label"] = ""
+        st.session_state["forecast_place"] = ""
+        st.session_state["forecast_notice"] = None
+        st.session_state["forecast_error_detail"] = None
 
-    missing_fields = validate_inputs(
-        birth_date=birth_date,
-        birth_time_label=birth_time_label,
-        birth_place=birth_place,
-        period_label=period_label,
-        question_focus=question_focus,
-    )
-    if missing_fields:
-        st.error(
-            "Data kurang lengkap. Mohon lengkapi: "
-            + ", ".join(missing_fields)
-            + "."
+        missing_fields = validate_inputs(
+            birth_date=birth_date,
+            birth_time_label=birth_time_label,
+            birth_place=birth_place,
+            period_label=period_label,
+            question_focus=question_focus,
         )
-        return
-
-    birth_time, is_birth_time_known = parse_birth_time(birth_time_label)
-
-    api_key = get_setting("OPENAI_API_KEY")
-    model = get_setting("OPENAI_MODEL", "gpt-5-mini")
-    reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "minimal")
-    base_url = get_setting("OPENAI_BASE_URL")
-
-    if not api_key:
-        st.error(
-            "`OPENAI_API_KEY` belum tersedia. Untuk local run, isi `.streamlit/secrets.toml`. "
-            "Untuk Hugging Face, tambahkan sebagai secret Space."
-        )
-        return
-    if "\n" in api_key or api_key.startswith("OPENAI_API_KEY="):
-        st.error(
-            "`OPENAI_API_KEY` tidak valid. Di Hugging Face Space, isi secret hanya dengan nilai key-nya saja, "
-            "misalnya `sk-...`, bukan format `.env` seperti `OPENAI_API_KEY=sk-...`."
-        )
-        return
-
-    status_placeholder = st.empty()
-    status_placeholder.info("Madame lagi siap-siap buka ramalanmu...")
-
-    with st.spinner("Madame sedang menyusun arah energimu..."):
-        try:
-            forecast = generate_fortune(
-                api_key=api_key,
-                model=model,
-                reasoning_effort=reasoning_effort,
-                base_url=base_url or None,
-                birth_date=birth_date,
-                birth_time=birth_time,
-                is_birth_time_known=is_birth_time_known,
-                birth_place=birth_place.strip(),
-                period_label=period_label,
-                period_key=PERIOD_OPTIONS[period_label],
-                question_focus=question_focus,
+        if missing_fields:
+            st.error(
+                "Data kurang lengkap. Mohon lengkapi: "
+                + ", ".join(missing_fields)
+                + "."
             )
-        except FortuneError as exc:
-            forecast = generate_fallback_fortune(
-                birth_date=birth_date,
-                birth_time=birth_time,
-                is_birth_time_known=is_birth_time_known,
-                birth_place=birth_place.strip(),
-                period_label=period_label,
-                period_key=PERIOD_OPTIONS[period_label],
-                question_focus=question_focus,
-            )
-            status_placeholder.warning(
-                f"Model utama lagi bermasalah, jadi sementara dipakai bacaan cadangan. Detail: {exc}"
-            )
-        except Exception as exc:
-            forecast = generate_fallback_fortune(
-                birth_date=birth_date,
-                birth_time=birth_time,
-                is_birth_time_known=is_birth_time_known,
-                birth_place=birth_place.strip(),
-                period_label=period_label,
-                period_key=PERIOD_OPTIONS[period_label],
-                question_focus=question_focus,
-            )
-            status_placeholder.warning(
-                "Koneksi ke model utama gagal, jadi yang tampil adalah bacaan cadangan. "
-                "Buka detail error di bawah kalau perlu."
-            )
-            with st.expander("Detail error", expanded=False):
-                st.code(traceback.format_exc())
         else:
-            status_placeholder.empty()
+            birth_time, is_birth_time_known = parse_birth_time(birth_time_label)
+
+            api_key = get_setting("OPENAI_API_KEY")
+            model = get_setting("OPENAI_MODEL", "gpt-5-mini")
+            reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "minimal")
+            base_url = get_setting("OPENAI_BASE_URL")
+
+            if not api_key:
+                st.error(
+                    "`OPENAI_API_KEY` belum tersedia. Untuk local run, isi `.streamlit/secrets.toml`. "
+                    "Untuk Streamlit Community Cloud, tambahkan di Settings > Secrets."
+                )
+            elif "\n" in api_key or api_key.startswith("OPENAI_API_KEY="):
+                st.error(
+                    "`OPENAI_API_KEY` tidak valid. Isi secret hanya dengan nilai key-nya saja, "
+                    "misalnya `sk-...`, bukan format `.env` seperti `OPENAI_API_KEY=sk-...`."
+                )
+            else:
+                status_placeholder = st.empty()
+                status_placeholder.info("Madame lagi siap-siap buka ramalanmu...")
+
+                with st.spinner("Madame sedang menyusun arah energimu..."):
+                    try:
+                        forecast = generate_fortune(
+                            api_key=api_key,
+                            model=model,
+                            reasoning_effort=reasoning_effort,
+                            base_url=base_url or None,
+                            birth_date=birth_date,
+                            birth_time=birth_time,
+                            is_birth_time_known=is_birth_time_known,
+                            birth_place=birth_place.strip(),
+                            period_label=period_label,
+                            period_key=PERIOD_OPTIONS[period_label],
+                            question_focus=question_focus,
+                        )
+                    except FortuneError as exc:
+                        forecast = generate_fallback_fortune(
+                            birth_date=birth_date,
+                            birth_time=birth_time,
+                            is_birth_time_known=is_birth_time_known,
+                            birth_place=birth_place.strip(),
+                            period_label=period_label,
+                            period_key=PERIOD_OPTIONS[period_label],
+                            question_focus=question_focus,
+                        )
+                        st.session_state["forecast_notice"] = (
+                            f"Model utama lagi bermasalah, jadi sementara dipakai bacaan cadangan. Detail: {exc}"
+                        )
+                    except Exception:
+                        forecast = generate_fallback_fortune(
+                            birth_date=birth_date,
+                            birth_time=birth_time,
+                            is_birth_time_known=is_birth_time_known,
+                            birth_place=birth_place.strip(),
+                            period_label=period_label,
+                            period_key=PERIOD_OPTIONS[period_label],
+                            question_focus=question_focus,
+                        )
+                        st.session_state["forecast_notice"] = (
+                            "Koneksi ke model utama gagal, jadi yang tampil adalah bacaan cadangan. "
+                            "Buka detail error di bawah kalau perlu."
+                        )
+                        st.session_state["forecast_error_detail"] = traceback.format_exc()
+                    else:
+                        st.session_state["forecast_notice"] = None
+                        st.session_state["forecast_error_detail"] = None
+                    finally:
+                        status_placeholder.empty()
+
+                if birth_time is not None:
+                    local_birth_label = datetime.combine(birth_date, birth_time).strftime("%d %b %Y %H:%M")
+                else:
+                    local_birth_label = f"{birth_date.strftime('%d %b %Y')} (jam tidak diketahui)"
+
+                st.session_state["forecast_result"] = forecast
+                st.session_state["forecast_birth_label"] = local_birth_label
+                st.session_state["forecast_place"] = birth_place.strip()
+
+    forecast = st.session_state.get("forecast_result")
+    if not forecast:
+        return
+
+    notice = st.session_state.get("forecast_notice")
+    if notice:
+        st.warning(notice)
+
+    error_detail = st.session_state.get("forecast_error_detail")
+    if error_detail:
+        with st.expander("Detail error", expanded=False):
+            st.code(error_detail)
 
     st.markdown('<div class="section-label">SINGKAP RAMALANNYA</div>', unsafe_allow_html=True)
     for section in SECTION_ORDER:
@@ -500,15 +534,10 @@ def main() -> None:
         )
         st.write("")
 
-    if birth_time is not None:
-        local_birth_label = datetime.combine(birth_date, birth_time).strftime("%d %b %Y %H:%M")
-    else:
-        local_birth_label = f"{birth_date.strftime('%d %b %Y')} (jam tidak diketahui)"
-
     st.markdown(
         (
             f"<p class='footnote'>Input diproses dari waktu lokal kelahiran "
-            f"{escape(local_birth_label)} di {escape(birth_place.strip())} "
+            f"{escape(st.session_state['forecast_birth_label'])} di {escape(st.session_state['forecast_place'])} "
             f"dengan estimasi zona waktu bila diperlukan.</p>"
         ),
         unsafe_allow_html=True,
