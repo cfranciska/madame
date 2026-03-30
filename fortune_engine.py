@@ -165,19 +165,29 @@ def generate_fortune(
     period_label: str,
     period_key: str,
     question_focus: str,
+    debug_log=None,
 ) -> dict[str, str]:
+    if debug_log:
+        debug_log("generate_fortune:start")
     context = build_birth_context(
         birth_date=birth_date,
         birth_time=birth_time,
         is_birth_time_known=is_birth_time_known,
         birth_place=birth_place,
     )
+    if debug_log:
+        debug_log(
+            "generate_fortune:context_ready "
+            f"tz={context.timezone_name} source={context.timezone_source} coords={context.coordinates}"
+        )
     client = OpenAI(
         api_key=api_key,
         base_url=base_url,
         timeout=DEFAULT_OPENAI_TIMEOUT_SECONDS,
         max_retries=1,
     )
+    if debug_log:
+        debug_log(f"generate_fortune:client_ready model={model}")
     user_prompt = build_user_prompt(
         context=context,
         period_label=period_label,
@@ -189,21 +199,30 @@ def generate_fortune(
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
     ]
+    if debug_log:
+        debug_log("generate_fortune:requesting_completion")
     response = request_fortune_completion(
         client=client,
         model=model,
         reasoning_effort=reasoning_effort,
         messages=messages,
+        debug_log=debug_log,
     )
 
+    if debug_log:
+        debug_log("generate_fortune:completion_received")
     content = extract_response_text(response)
     if not content:
         raise FortuneError("Model tidak mengembalikan isi ramalan.")
+    if debug_log:
+        debug_log(f"generate_fortune:content_received chars={len(content)}")
 
     try:
         payload = json.loads(clean_json_payload(content))
     except json.JSONDecodeError as exc:
         raise FortuneError("Respons model tidak berbentuk JSON yang valid.") from exc
+    if debug_log:
+        debug_log(f"generate_fortune:json_parsed keys={sorted(payload.keys())}")
 
     result: dict[str, str] = {}
     for section in SECTION_ORDER:
@@ -211,6 +230,8 @@ def generate_fortune(
         if not text:
             raise FortuneError(f"Bagian `{section}` kosong pada respons model.")
         result[section] = trim_words(text, limit=50)
+    if debug_log:
+        debug_log("generate_fortune:result_ready")
     return result
 
 
@@ -287,6 +308,7 @@ def request_fortune_completion(
     model: str,
     reasoning_effort: str,
     messages: list[dict[str, str]],
+    debug_log=None,
 ):
     attempts = [
         {
@@ -333,9 +355,17 @@ def request_fortune_completion(
             kwargs["reasoning_effort"] = reasoning_effort
 
         try:
+            if debug_log:
+                debug_log(
+                    "request_fortune_completion:attempt "
+                    f"response_format={attempt['response_format'] is not None} "
+                    f"reasoning_effort={attempt['include_reasoning_effort']}"
+                )
             return client.chat.completions.create(**kwargs)
         except Exception as exc:
             last_error = exc
+            if debug_log:
+                debug_log(f"request_fortune_completion:attempt_failed error={exc}")
 
     raise FortuneError(f"Gagal meminta respons ke model: {last_error}")
 

@@ -5,6 +5,7 @@ import traceback
 from datetime import date, datetime, time
 from html import escape
 from pathlib import Path
+from time import perf_counter
 
 import streamlit as st
 
@@ -267,6 +268,12 @@ def ensure_app_state() -> None:
     st.session_state.setdefault("forecast_place", "")
     st.session_state.setdefault("forecast_notice", None)
     st.session_state.setdefault("forecast_error_detail", None)
+    st.session_state.setdefault("forecast_debug_log", [])
+
+
+def append_debug_log(message: str) -> None:
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    st.session_state["forecast_debug_log"].append(f"[{timestamp}] {message}")
 
 
 def get_setting(name: str, default: str = "") -> str:
@@ -406,11 +413,14 @@ def main() -> None:
             submitted = st.form_submit_button("Buka ramalannya", use_container_width=True)
 
     if submitted:
+        started_at = perf_counter()
         st.session_state["forecast_result"] = None
         st.session_state["forecast_birth_label"] = ""
         st.session_state["forecast_place"] = ""
         st.session_state["forecast_notice"] = None
         st.session_state["forecast_error_detail"] = None
+        st.session_state["forecast_debug_log"] = []
+        append_debug_log("submit:start")
 
         missing_fields = validate_inputs(
             birth_date=birth_date,
@@ -420,25 +430,36 @@ def main() -> None:
             question_focus=question_focus,
         )
         if missing_fields:
+            append_debug_log(f"submit:validation_failed missing={', '.join(missing_fields)}")
             st.error(
                 "Data kurang lengkap. Mohon lengkapi: "
                 + ", ".join(missing_fields)
                 + "."
             )
         else:
+            append_debug_log("submit:validation_ok")
             birth_time, is_birth_time_known = parse_birth_time(birth_time_label)
+            append_debug_log(
+                f"submit:birth_time_parsed known={is_birth_time_known} value={birth_time_label}"
+            )
 
             api_key = get_setting("OPENAI_API_KEY")
             model = get_setting("OPENAI_MODEL", "gpt-5-mini")
             reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "minimal")
             base_url = get_setting("OPENAI_BASE_URL")
+            append_debug_log(
+                f"submit:settings_loaded api_key={'yes' if bool(api_key) else 'no'} "
+                f"model={model} reasoning={reasoning_effort} base_url={'set' if bool(base_url) else 'default'}"
+            )
 
             if not api_key:
+                append_debug_log("submit:missing_api_key")
                 st.error(
                     "`OPENAI_API_KEY` belum tersedia. Untuk local run, isi `.streamlit/secrets.toml`. "
                     "Untuk Streamlit Community Cloud, tambahkan di Settings > Secrets."
                 )
             elif "\n" in api_key or api_key.startswith("OPENAI_API_KEY="):
+                append_debug_log("submit:invalid_api_key_format")
                 st.error(
                     "`OPENAI_API_KEY` tidak valid. Isi secret hanya dengan nilai key-nya saja, "
                     "misalnya `sk-...`, bukan format `.env` seperti `OPENAI_API_KEY=sk-...`."
@@ -449,6 +470,7 @@ def main() -> None:
 
                 with st.spinner("Madame sedang menyusun arah energimu..."):
                     try:
+                        append_debug_log("submit:calling_generate_fortune")
                         forecast = generate_fortune(
                             api_key=api_key,
                             model=model,
@@ -461,8 +483,10 @@ def main() -> None:
                             period_label=period_label,
                             period_key=PERIOD_OPTIONS[period_label],
                             question_focus=question_focus,
+                            debug_log=append_debug_log,
                         )
                     except FortuneError as exc:
+                        append_debug_log(f"submit:fortune_error error={exc}")
                         forecast = generate_fallback_fortune(
                             birth_date=birth_date,
                             birth_time=birth_time,
@@ -476,6 +500,7 @@ def main() -> None:
                             f"Model utama lagi bermasalah, jadi sementara dipakai bacaan cadangan. Detail: {exc}"
                         )
                     except Exception:
+                        append_debug_log("submit:unexpected_error")
                         forecast = generate_fallback_fortune(
                             birth_date=birth_date,
                             birth_time=birth_time,
@@ -491,9 +516,11 @@ def main() -> None:
                         )
                         st.session_state["forecast_error_detail"] = traceback.format_exc()
                     else:
+                        append_debug_log("submit:generate_fortune_ok")
                         st.session_state["forecast_notice"] = None
                         st.session_state["forecast_error_detail"] = None
                     finally:
+                        append_debug_log("submit:spinner_done")
                         status_placeholder.empty()
 
                 if birth_time is not None:
@@ -504,9 +531,16 @@ def main() -> None:
                 st.session_state["forecast_result"] = forecast
                 st.session_state["forecast_birth_label"] = local_birth_label
                 st.session_state["forecast_place"] = birth_place.strip()
+                append_debug_log(
+                    f"submit:result_saved elapsed={perf_counter() - started_at:.2f}s sections={len(forecast)}"
+                )
 
     forecast = st.session_state.get("forecast_result")
     if not forecast:
+        debug_log = st.session_state.get("forecast_debug_log") or []
+        if debug_log:
+            with st.expander("Debug log", expanded=True):
+                st.code("\n".join(debug_log))
         return
 
     notice = st.session_state.get("forecast_notice")
@@ -517,6 +551,11 @@ def main() -> None:
     if error_detail:
         with st.expander("Detail error", expanded=False):
             st.code(error_detail)
+
+    debug_log = st.session_state.get("forecast_debug_log") or []
+    if debug_log:
+        with st.expander("Debug log", expanded=False):
+            st.code("\n".join(debug_log))
 
     st.markdown('<div class="section-label">SINGKAP RAMALANNYA</div>', unsafe_allow_html=True)
     for section in SECTION_ORDER:
