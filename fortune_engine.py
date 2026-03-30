@@ -240,7 +240,6 @@ def run_openai_smoke_test(
             {"role": "system", "content": "Reply with valid JSON only."},
             {"role": "user", "content": '{"ok":true}'},
         ],
-        "response_format": {"type": "json_object"},
         "max_tokens": 32,
         "temperature": 0,
     }
@@ -395,15 +394,15 @@ def request_fortune_completion(
     endpoint = endpoint_base if endpoint_base.endswith("/chat/completions") else f"{endpoint_base}/chat/completions"
     attempts = [
         {
-            "response_format": {"type": "json_object"},
-            "include_reasoning_effort": False,
-        },
-        {
             "response_format": None,
             "include_reasoning_effort": False,
         },
         {
             "response_format": {"type": "json_object"},
+            "include_reasoning_effort": False,
+        },
+        {
+            "response_format": None,
             "include_reasoning_effort": True,
         },
     ]
