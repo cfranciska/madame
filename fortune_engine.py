@@ -214,6 +214,73 @@ def generate_fortune(
     return result
 
 
+def generate_fallback_fortune(
+    *,
+    birth_date: date,
+    birth_time: time | None,
+    is_birth_time_known: bool,
+    birth_place: str,
+    period_label: str,
+    period_key: str,
+    question_focus: str,
+) -> dict[str, str]:
+    context = build_birth_context(
+        birth_date=birth_date,
+        birth_time=birth_time,
+        is_birth_time_known=is_birth_time_known,
+        birth_place=birth_place,
+    )
+    focus_map = {
+        "Umum": "ritme harian dan keputusan kecil",
+        "Keuangan": "arus uang dan prioritas belanja",
+        "Karir": "arah kerja dan cara ambil posisi",
+        "Asmara": "chemistry, batas, dan kejelasan rasa",
+        "Kesehatan": "energi, pola istirahat, dan tempo tubuh",
+    }
+    period_map = {
+        "today": "hari ini",
+        "week": "minggu ini",
+        "year": "tahun ini",
+    }
+    focus_label = focus_map.get(question_focus, "arah hidup secara umum")
+    period_phrase = period_map.get(period_key, period_label.lower())
+    sign = context.western_sign
+    vedic_sign = context.vedic_sign_estimate
+    life_path = context.life_path_number
+    personal_year = context.personal_year_number
+    bazi_hint = context.bazi_estimate.split(",")[0].replace("Tahun ", "")
+
+    sections = {
+        "BaZi": (
+            f"BaZi kamu lagi mendorong mode gerak yang lebih taktis untuk {period_phrase}. "
+            f"Vibe {bazi_hint} cocok buat pilih langkah yang simpel tapi tepat, terutama soal {focus_label}. "
+            f"Jangan kebanyakan ancang-ancang."
+        ),
+        "Western Astrology": (
+            f"Sebagai {sign}, kamu lagi bagus saat berani kelihatan jelas maunya. "
+            f"Untuk {period_phrase}, peluang datang waktu kamu stop overthinking dan kasih respons yang tegas pada urusan {focus_label}."
+        ),
+        "Zi Wei Dou Shu": (
+            f"Chart estimasimu nunjukin momentum naik pelan tapi rapi. "
+            f"Fokus {period_phrase} bukan ngebut, tapi naruh energi di orang, jadwal, dan pilihan yang paling ngangkat area {focus_label}."
+        ),
+        "Numerologi": (
+            f"Life path {life_path} dengan personal year {personal_year} bikin tema kamu sekarang soal arah yang lebih matang. "
+            f"Untuk {focus_label}, pilih yang paling konsisten dijaga, bukan yang paling dramatis kelihatannya."
+        ),
+        "Vedic Astrology": (
+            f"Nuansa {vedic_sign} kasih sinyal buat lebih peka sama timing. "
+            f"Di {period_phrase}, dorongan terbaik muncul kalau kamu nurunin noise, lalu bergerak pas insting soal {focus_label} mulai terasa tenang."
+        ),
+        "Intinya": (
+            f"Madame bilang: {period_phrase} ini bukan waktunya sok misterius. "
+            f"Jelasin maumu, rapihin prioritas, dan pilih langkah yang paling ringan buat dijalanin terus. "
+            f"Pelan-pelan juga tetap kelihatan mahal."
+        ),
+    }
+    return {section: trim_words(text, limit=50) for section, text in sections.items()}
+
+
 def request_fortune_completion(
     *,
     client: OpenAI,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from fortune_engine import FortuneError, generate_fortune
+from fortune_engine import FortuneError, generate_fallback_fortune, generate_fortune
 
 
 st.set_page_config(
@@ -308,6 +308,7 @@ def strip_wrapping_quotes(value: str) -> str:
     return value
 
 
+@st.cache_data(show_spinner=False)
 def encode_image(path: str) -> str:
     image_bytes = Path(path).read_bytes()
     return base64.b64encode(image_bytes).decode("utf-8")
@@ -433,6 +434,9 @@ def main() -> None:
         )
         return
 
+    status_placeholder = st.empty()
+    status_placeholder.info("Madame lagi siap-siap buka ramalanmu...")
+
     with st.spinner("Madame sedang menyusun arah energimu..."):
         try:
             forecast = generate_fortune(
@@ -449,13 +453,36 @@ def main() -> None:
                 question_focus=question_focus,
             )
         except FortuneError as exc:
-            st.error(str(exc))
-            return
+            forecast = generate_fallback_fortune(
+                birth_date=birth_date,
+                birth_time=birth_time,
+                is_birth_time_known=is_birth_time_known,
+                birth_place=birth_place.strip(),
+                period_label=period_label,
+                period_key=PERIOD_OPTIONS[period_label],
+                question_focus=question_focus,
+            )
+            status_placeholder.warning(
+                f"Model utama lagi bermasalah, jadi sementara dipakai bacaan cadangan. Detail: {exc}"
+            )
         except Exception as exc:
-            st.error(f"Terjadi kendala saat membuat ramalan: {exc}")
+            forecast = generate_fallback_fortune(
+                birth_date=birth_date,
+                birth_time=birth_time,
+                is_birth_time_known=is_birth_time_known,
+                birth_place=birth_place.strip(),
+                period_label=period_label,
+                period_key=PERIOD_OPTIONS[period_label],
+                question_focus=question_focus,
+            )
+            status_placeholder.warning(
+                "Koneksi ke model utama gagal, jadi yang tampil adalah bacaan cadangan. "
+                "Buka detail error di bawah kalau perlu."
+            )
             with st.expander("Detail error", expanded=False):
                 st.code(traceback.format_exc())
-            return
+        else:
+            status_placeholder.empty()
 
     st.markdown('<div class="section-label">SINGKAP RAMALANNYA</div>', unsafe_allow_html=True)
     for section in SECTION_ORDER:
