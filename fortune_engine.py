@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from functools import lru_cache
+from time import sleep
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -32,6 +33,7 @@ SECTION_ORDER = [
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 DEFAULT_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "")
 DEFAULT_OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
+DEFAULT_OPENAI_RETRY_COUNT = int(os.getenv("OPENAI_RETRY_COUNT", "3"))
 SYSTEM_PROMPT = """Anda adalah peramal profesional multidisiplin yang menggabungkan lima sistem ramalan klasik:
 BaZi
 Western Astrology
@@ -490,56 +492,91 @@ def request_fortune_completion(
 
 def post_chat_completion(*, endpoint: str, api_key: str, payload: dict, debug_log=None) -> str:
     body = json.dumps(payload).encode("utf-8")
-    request = Request(
-        endpoint,
-        data=body,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-    )
+    last_error: Exception | None = None
 
-    try:
-        if debug_log:
-            debug_log(
-                "post_chat_completion:open "
-                f"url={endpoint} timeout={DEFAULT_OPENAI_TIMEOUT_SECONDS}s body_chars={len(body)}"
-            )
-        with urlopen(request, timeout=DEFAULT_OPENAI_TIMEOUT_SECONDS) as response:
-            status_code = getattr(response, "status", None) or response.getcode()
-            raw = response.read().decode("utf-8")
-        if debug_log:
-            debug_log(
-                "post_chat_completion:response_received "
-                f"status={status_code} chars={len(raw)}"
-            )
-    except HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
-        if debug_log:
-            debug_log(
-                "post_chat_completion:http_error "
-                f"status={exc.code} reason={exc.reason} details={details[:200]}"
-            )
-        raise FortuneError(f"HTTP {exc.code} dari OpenAI: {details[:300]}") from exc
-    except URLError as exc:
-        if debug_log:
-            debug_log(
-                "post_chat_completion:url_error "
-                f"reason_type={type(exc.reason).__name__} reason={exc.reason}"
-            )
-        raise FortuneError(f"Koneksi ke OpenAI gagal: {exc.reason}") from exc
-    except TimeoutError as exc:
-        if debug_log:
-            debug_log("post_chat_completion:timeout")
-        raise FortuneError("Request ke OpenAI timeout.") from exc
-    except Exception as exc:
-        if debug_log:
-            debug_log(
-                "post_chat_completion:unexpected_exception "
-                f"error_type={type(exc).__name__} error={exc}"
-            )
-        raise FortuneError(f"Request ke OpenAI gagal: {exc}") from exc
+    for attempt_index in range(1, DEFAULT_OPENAI_RETRY_COUNT + 1):
+        request = Request(
+            endpoint,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        try:
+            if debug_log:
+                debug_log(
+                    "post_chat_completion:open "
+                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"url={endpoint} timeout={DEFAULT_OPENAI_TIMEOUT_SECONDS}s body_chars={len(body)}"
+                )
+            with urlopen(request, timeout=DEFAULT_OPENAI_TIMEOUT_SECONDS) as response:
+                status_code = getattr(response, "status", None) or response.getcode()
+                raw = response.read().decode("utf-8")
+            if debug_log:
+                debug_log(
+                    "post_chat_completion:response_received "
+                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"status={status_code} chars={len(raw)}"
+                )
+            break
+        except HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="replace")
+            if debug_log:
+                debug_log(
+                    "post_chat_completion:http_error "
+                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"status={exc.code} reason={exc.reason} details={details[:200]}"
+                )
+            if exc.code in {408, 409, 429, 500, 502, 503, 504} and attempt_index < DEFAULT_OPENAI_RETRY_COUNT:
+                backoff_seconds = attempt_index
+                if debug_log:
+                    debug_log(f"post_chat_completion:retrying_in seconds={backoff_seconds}")
+                sleep(backoff_seconds)
+                last_error = exc
+                continue
+            raise FortuneError(f"HTTP {exc.code} dari OpenAI: {details[:300]}") from exc
+        except URLError as exc:
+            if debug_log:
+                debug_log(
+                    "post_chat_completion:url_error "
+                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"reason_type={type(exc.reason).__name__} reason={exc.reason}"
+                )
+            if attempt_index < DEFAULT_OPENAI_RETRY_COUNT:
+                backoff_seconds = attempt_index
+                if debug_log:
+                    debug_log(f"post_chat_completion:retrying_in seconds={backoff_seconds}")
+                sleep(backoff_seconds)
+                last_error = exc
+                continue
+            raise FortuneError(f"Koneksi ke OpenAI gagal: {exc.reason}") from exc
+        except TimeoutError as exc:
+            if debug_log:
+                debug_log(
+                    "post_chat_completion:timeout "
+                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT}"
+                )
+            if attempt_index < DEFAULT_OPENAI_RETRY_COUNT:
+                backoff_seconds = attempt_index
+                if debug_log:
+                    debug_log(f"post_chat_completion:retrying_in seconds={backoff_seconds}")
+                sleep(backoff_seconds)
+                last_error = exc
+                continue
+            raise FortuneError("Request ke OpenAI timeout.") from exc
+        except Exception as exc:
+            if debug_log:
+                debug_log(
+                    "post_chat_completion:unexpected_exception "
+                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"error_type={type(exc).__name__} error={exc}"
+                )
+            raise FortuneError(f"Request ke OpenAI gagal: {exc}") from exc
+    else:
+        raise FortuneError(f"Request ke OpenAI gagal setelah retry: {last_error}")
 
     try:
         response_payload = json.loads(raw)
