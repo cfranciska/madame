@@ -13,6 +13,7 @@ import fortune_engine
 
 FortuneError = fortune_engine.FortuneError
 generate_fortune = fortune_engine.generate_fortune
+run_openai_smoke_test = fortune_engine.run_openai_smoke_test
 
 
 st.set_page_config(
@@ -474,10 +475,11 @@ def main() -> None:
             reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "")
             base_url = get_setting("OPENAI_BASE_URL")
             openai_enabled = is_truthy(get_setting("OPENAI_ENABLED", "false"))
+            openai_smoke_test = is_truthy(get_setting("OPENAI_SMOKE_TEST", "false"))
             append_debug_log(
                 f"submit:settings_loaded api_key={'yes' if bool(api_key) else 'no'} "
                 f"model={model} reasoning={reasoning_effort} base_url={'set' if bool(base_url) else 'default'} "
-                f"openai_enabled={openai_enabled}"
+                f"openai_enabled={openai_enabled} smoke_test={openai_smoke_test}"
             )
 
             if openai_enabled and not api_key:
@@ -501,6 +503,15 @@ def main() -> None:
             else:
                 with st.spinner("Madame sedang menyusun arah energimu..."):
                     try:
+                        if openai_smoke_test:
+                            append_debug_log("submit:running_smoke_test")
+                            run_openai_smoke_test(
+                                api_key=api_key,
+                                model=model,
+                                base_url=base_url or None,
+                                debug_log=append_debug_log,
+                            )
+                            append_debug_log("submit:smoke_test_ok")
                         append_debug_log("submit:calling_generate_fortune")
                         forecast = generate_fortune(
                             api_key=api_key,

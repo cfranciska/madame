@@ -231,6 +231,38 @@ def generate_fortune(
     return result
 
 
+def run_openai_smoke_test(
+    *,
+    api_key: str,
+    model: str = DEFAULT_MODEL,
+    base_url: str | None = None,
+    debug_log=None,
+) -> str:
+    endpoint_base = (base_url or "https://api.openai.com/v1").rstrip("/")
+    endpoint = endpoint_base if endpoint_base.endswith("/chat/completions") else f"{endpoint_base}/chat/completions"
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "Reply with valid JSON only."},
+            {"role": "user", "content": '{"ok":true}'},
+        ],
+        "response_format": {"type": "json_object"},
+        "max_tokens": 32,
+        "temperature": 0,
+    }
+    if debug_log:
+        debug_log("run_openai_smoke_test:start")
+    content = post_chat_completion(
+        endpoint=endpoint,
+        api_key=api_key,
+        payload=payload,
+        debug_log=debug_log,
+    )
+    if debug_log:
+        debug_log(f"run_openai_smoke_test:ok content={content[:120]}")
+    return content
+
+
 def generate_fallback_fortune(
     *,
     birth_date: date,
