@@ -31,7 +31,7 @@ Tambahkan secret berikut di menu app `Settings > Secrets`:
 
 - `OPENAI_API_KEY` wajib
 - `OPENAI_ENABLED` opsional, default `false`
-- `OPENAI_MODEL` opsional, default `gpt-4o-mini`
+- `OPENAI_MODEL` opsional, default `gpt-5.4-mini`
 - `OPENAI_REASONING_EFFORT` opsional, default `minimal`
 - `OPENAI_BASE_URL` opsional untuk endpoint OpenAI-compatible
 

@@ -469,7 +469,7 @@ def main() -> None:
             )
 
             api_key = get_setting("OPENAI_API_KEY")
-            model = get_setting("OPENAI_MODEL", "gpt-4o-mini")
+            model = get_setting("OPENAI_MODEL", "gpt-5.4-mini")
             reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "")
             base_url = get_setting("OPENAI_BASE_URL")
             openai_enabled = is_truthy(get_setting("OPENAI_ENABLED", "false"))
