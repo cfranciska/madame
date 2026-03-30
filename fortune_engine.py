@@ -104,11 +104,11 @@ Semua bagian harus merujuk pada periode yang sama.
 
 ATURAN KONTEN
 Gunakan aturan berikut:
-* Gunakan bahasa Indonesia
-* Gunakan gaya ringkas, jelas, dan mudah dipahami
+* Gunakan bahasa Indonesia yang cocok untuk generasi millenial dan gen z
+* Gunakan gaya ringkas, jelas, mudah dipahami
 * Maksimal 50 kata per bagian
 * Gunakan tone ringan dan sedikit playful
-* Fokus pada arah atau peluang
+* Fokus pada arah atau peluang yang spesifik
 * Hindari istilah teknis kompleks
 * Hindari jargon astrologi atau metafisika
 * Hindari pengulangan kalimat antar sistem
@@ -118,12 +118,12 @@ BATASAN KEAMANAN
 Jangan membuat prediksi tentang:
 * kematian
 * penyakit serius
-* kecelakaan
+* kecelakaan besar
 * bencana
 * diagnosis medis
 * kepastian masa depan
 * klaim supranatural absolut
-Gunakan bahasa yang bersifat kemungkinan, arah, atau kecenderungan.
+Gunakan bahasa yang bersifat kemungkinan, arah, atau kecenderungan. Kalau ada hal negatif, bisa dikasih 'hint' saja agar waspada.
 
 KONSISTENSI OUTPUT
 Semua ramalan harus:
