@@ -3,10 +3,11 @@ import os
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from functools import lru_cache
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from geopy.geocoders import Nominatim
-from openai import OpenAI
 
 try:
     from lunardate import LunarDate
@@ -180,12 +181,6 @@ def generate_fortune(
             "generate_fortune:context_ready "
             f"tz={context.timezone_name} source={context.timezone_source} coords={context.coordinates}"
         )
-    client = OpenAI(
-        api_key=api_key,
-        base_url=base_url,
-        timeout=DEFAULT_OPENAI_TIMEOUT_SECONDS,
-        max_retries=1,
-    )
     if debug_log:
         debug_log(f"generate_fortune:client_ready model={model}")
     user_prompt = build_user_prompt(
@@ -201,8 +196,9 @@ def generate_fortune(
     ]
     if debug_log:
         debug_log("generate_fortune:requesting_completion")
-    response = request_fortune_completion(
-        client=client,
+    content = request_fortune_completion(
+        api_key=api_key,
+        base_url=base_url,
         model=model,
         reasoning_effort=reasoning_effort,
         messages=messages,
@@ -211,7 +207,6 @@ def generate_fortune(
 
     if debug_log:
         debug_log("generate_fortune:completion_received")
-    content = extract_response_text(response)
     if not content:
         raise FortuneError("Model tidak mengembalikan isi ramalan.")
     if debug_log:
@@ -304,12 +299,15 @@ def generate_fallback_fortune(
 
 def request_fortune_completion(
     *,
-    client: OpenAI,
+    api_key: str,
+    base_url: str | None,
     model: str,
     reasoning_effort: str,
     messages: list[dict[str, str]],
     debug_log=None,
 ):
+    endpoint_base = (base_url or "https://api.openai.com/v1").rstrip("/")
+    endpoint = endpoint_base if endpoint_base.endswith("/chat/completions") else f"{endpoint_base}/chat/completions"
     attempts = [
         {
             "response_format": {"type": "json_object"},
@@ -343,8 +341,13 @@ def request_fortune_completion(
                     f"response_format={attempt['response_format'] is not None} "
                     f"reasoning_effort={attempt['include_reasoning_effort']}"
                 )
-            return client.chat.completions.create(**kwargs)
-        except Exception as exc:
+            return post_chat_completion(
+                endpoint=endpoint,
+                api_key=api_key,
+                payload=kwargs,
+                debug_log=debug_log,
+            )
+        except FortuneError as exc:
             last_error = exc
             if debug_log:
                 debug_log(f"request_fortune_completion:attempt_failed error={exc}")
@@ -352,27 +355,54 @@ def request_fortune_completion(
     raise FortuneError(f"Gagal meminta respons ke model: {last_error}")
 
 
-def extract_response_text(response) -> str:
-    message = response.choices[0].message
-    content = message.content
-    if isinstance(content, str):
-        return content.strip()
-    if isinstance(content, list):
+def post_chat_completion(*, endpoint: str, api_key: str, payload: dict, debug_log=None) -> str:
+    body = json.dumps(payload).encode("utf-8")
+    request = Request(
+        endpoint,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+
+    try:
+        if debug_log:
+            debug_log(f"post_chat_completion:open url={endpoint}")
+        with urlopen(request, timeout=DEFAULT_OPENAI_TIMEOUT_SECONDS) as response:
+            raw = response.read().decode("utf-8")
+        if debug_log:
+            debug_log(f"post_chat_completion:response_bytes chars={len(raw)}")
+    except HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise FortuneError(f"HTTP {exc.code} dari OpenAI: {details[:300]}") from exc
+    except URLError as exc:
+        raise FortuneError(f"Koneksi ke OpenAI gagal: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise FortuneError("Request ke OpenAI timeout.") from exc
+    except Exception as exc:
+        raise FortuneError(f"Request ke OpenAI gagal: {exc}") from exc
+
+    try:
+        response_payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise FortuneError("Respons OpenAI bukan JSON valid.") from exc
+
+    try:
+        message = response_payload["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise FortuneError(f"Format respons OpenAI tidak dikenali: {str(response_payload)[:300]}") from exc
+
+    if isinstance(message, str):
+        return message.strip()
+    if isinstance(message, list):
         texts: list[str] = []
-        for item in content:
-            if isinstance(item, dict):
-                text = item.get("text")
-                if text:
-                    texts.append(str(text))
-                continue
-            text = getattr(item, "text", None)
-            if text:
-                texts.append(str(text))
+        for item in message:
+            if isinstance(item, dict) and item.get("text"):
+                texts.append(str(item["text"]))
         return "\n".join(texts).strip()
-    parsed = getattr(message, "parsed", None)
-    if parsed is not None:
-        return json.dumps(parsed, ensure_ascii=False)
-    return ""
+    return str(message).strip()
 
 
 def clean_json_payload(content: str) -> str:

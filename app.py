@@ -204,6 +204,23 @@ CUSTOM_CSS = """
         color: inherit;
     }
 
+    div[data-testid="stFormSubmitButton"] button:disabled,
+    div[data-testid="stFormSubmitButton"] button[disabled] {
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-3) 100%);
+        color: #fff7f0 !important;
+        opacity: 1 !important;
+        -webkit-text-fill-color: #fff7f0;
+    }
+
+    div[data-testid="stFormSubmitButton"] button:disabled p,
+    div[data-testid="stFormSubmitButton"] button[disabled] p,
+    div[data-testid="stFormSubmitButton"] button:disabled span,
+    div[data-testid="stFormSubmitButton"] button[disabled] span {
+        color: #fff7f0 !important;
+        opacity: 1 !important;
+        -webkit-text-fill-color: #fff7f0;
+    }
+
     @media (max-width: 640px) {
         .hero {
             padding: 1.45rem 1rem 1.05rem;
@@ -465,9 +482,6 @@ def main() -> None:
                     "misalnya `sk-...`, bukan format `.env` seperti `OPENAI_API_KEY=sk-...`."
                 )
             else:
-                status_placeholder = st.empty()
-                status_placeholder.info("Madame lagi siap-siap buka ramalanmu...")
-
                 with st.spinner("Madame sedang menyusun arah energimu..."):
                     try:
                         append_debug_log("submit:calling_generate_fortune")
@@ -521,7 +535,6 @@ def main() -> None:
                         st.session_state["forecast_error_detail"] = None
                     finally:
                         append_debug_log("submit:spinner_done")
-                        status_placeholder.empty()
 
                 if birth_time is not None:
                     local_birth_label = datetime.combine(birth_date, birth_time).strftime("%d %b %Y %H:%M")
@@ -552,11 +565,6 @@ def main() -> None:
         with st.expander("Detail error", expanded=False):
             st.code(error_detail)
 
-    debug_log = st.session_state.get("forecast_debug_log") or []
-    if debug_log:
-        with st.expander("Debug log", expanded=False):
-            st.code("\n".join(debug_log))
-
     st.markdown('<div class="section-label">SINGKAP RAMALANNYA</div>', unsafe_allow_html=True)
     for section in SECTION_ORDER:
         content = escape(forecast.get(section, "").strip())
@@ -581,6 +589,11 @@ def main() -> None:
         ),
         unsafe_allow_html=True,
     )
+
+    debug_log = st.session_state.get("forecast_debug_log") or []
+    if debug_log:
+        with st.expander("Debug log", expanded=False):
+            st.code("\n".join(debug_log))
 
 
 if __name__ == "__main__":
