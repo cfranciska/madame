@@ -1,4 +1,5 @@
 import base64
+import importlib
 import os
 import re
 import traceback
@@ -9,7 +10,10 @@ from time import perf_counter
 
 import streamlit as st
 
-from fortune_engine import FortuneError, generate_fallback_fortune, generate_fortune
+fortune_engine = importlib.import_module("fortune_engine")
+FortuneError = fortune_engine.FortuneError
+generate_fallback_fortune = fortune_engine.generate_fallback_fortune
+generate_fortune = fortune_engine.generate_fortune
 
 
 st.set_page_config(
@@ -210,15 +214,17 @@ CUSTOM_CSS = """
         color: #fff7f0 !important;
         opacity: 1 !important;
         -webkit-text-fill-color: #fff7f0;
+        filter: none !important;
     }
 
-    div[data-testid="stFormSubmitButton"] button:disabled p,
-    div[data-testid="stFormSubmitButton"] button[disabled] p,
-    div[data-testid="stFormSubmitButton"] button:disabled span,
-    div[data-testid="stFormSubmitButton"] button[disabled] span {
+    div[data-testid="stFormSubmitButton"] button:disabled *,
+    div[data-testid="stFormSubmitButton"] button[disabled] * {
         color: #fff7f0 !important;
         opacity: 1 !important;
         -webkit-text-fill-color: #fff7f0;
+        fill: #fff7f0 !important;
+        filter: none !important;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
     }
 
     @media (max-width: 640px) {
