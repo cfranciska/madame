@@ -1,5 +1,4 @@
 import base64
-import importlib
 import os
 import re
 import traceback
@@ -10,9 +9,9 @@ from time import perf_counter
 
 import streamlit as st
 
-fortune_engine = importlib.import_module("fortune_engine")
+import fortune_engine
+
 FortuneError = fortune_engine.FortuneError
-generate_fallback_fortune = fortune_engine.generate_fallback_fortune
 generate_fortune = fortune_engine.generate_fortune
 
 
@@ -494,31 +493,11 @@ def main() -> None:
                     "misalnya `sk-...`, bukan format `.env` seperti `OPENAI_API_KEY=sk-...`."
                 )
             elif not openai_enabled:
-                append_debug_log("submit:using_local_engine")
-                forecast = generate_fallback_fortune(
-                    birth_date=birth_date,
-                    birth_time=birth_time,
-                    is_birth_time_known=is_birth_time_known,
-                    birth_place=birth_place.strip(),
-                    period_label=period_label,
-                    period_key=PERIOD_OPTIONS[period_label],
-                    question_focus=question_focus,
-                )
+                append_debug_log("submit:openai_disabled")
                 st.session_state["forecast_notice"] = (
-                    "Mode stabil aktif."
+                    "Engine utama sedang dimatikan. Ramalan tidak ditampilkan sampai `OPENAI_ENABLED=true`."
                 )
                 st.session_state["forecast_error_detail"] = None
-                if birth_time is not None:
-                    local_birth_label = datetime.combine(birth_date, birth_time).strftime("%d %b %Y %H:%M")
-                else:
-                    local_birth_label = f"{birth_date.strftime('%d %b %Y')} (jam tidak diketahui)"
-
-                st.session_state["forecast_result"] = forecast
-                st.session_state["forecast_birth_label"] = local_birth_label
-                st.session_state["forecast_place"] = birth_place.strip()
-                append_debug_log(
-                    f"submit:result_saved elapsed={perf_counter() - started_at:.2f}s sections={len(forecast)}"
-                )
             else:
                 with st.spinner("Madame sedang menyusun arah energimu..."):
                     try:
@@ -539,31 +518,14 @@ def main() -> None:
                         )
                     except FortuneError as exc:
                         append_debug_log(f"submit:fortune_error error={exc}")
-                        forecast = generate_fallback_fortune(
-                            birth_date=birth_date,
-                            birth_time=birth_time,
-                            is_birth_time_known=is_birth_time_known,
-                            birth_place=birth_place.strip(),
-                            period_label=period_label,
-                            period_key=PERIOD_OPTIONS[period_label],
-                            question_focus=question_focus,
-                        )
                         st.session_state["forecast_notice"] = (
-                            f"Model utama lagi bermasalah, jadi sementara dipakai bacaan cadangan. Detail: {exc}"
+                            f"Model utama gagal membuat ramalan. Tidak ada output yang ditampilkan. Detail: {exc}"
                         )
+                        st.session_state["forecast_error_detail"] = None
                     except Exception:
                         append_debug_log("submit:unexpected_error")
-                        forecast = generate_fallback_fortune(
-                            birth_date=birth_date,
-                            birth_time=birth_time,
-                            is_birth_time_known=is_birth_time_known,
-                            birth_place=birth_place.strip(),
-                            period_label=period_label,
-                            period_key=PERIOD_OPTIONS[period_label],
-                            question_focus=question_focus,
-                        )
                         st.session_state["forecast_notice"] = (
-                            "Koneksi ke model utama gagal, jadi yang tampil adalah bacaan cadangan. "
+                            "Koneksi atau proses engine utama gagal. Tidak ada output yang ditampilkan. "
                             "Buka detail error di bawah kalau perlu."
                         )
                         st.session_state["forecast_error_detail"] = traceback.format_exc()
@@ -574,17 +536,18 @@ def main() -> None:
                     finally:
                         append_debug_log("submit:spinner_done")
 
-                if birth_time is not None:
-                    local_birth_label = datetime.combine(birth_date, birth_time).strftime("%d %b %Y %H:%M")
-                else:
-                    local_birth_label = f"{birth_date.strftime('%d %b %Y')} (jam tidak diketahui)"
+                if "forecast" in locals():
+                    if birth_time is not None:
+                        local_birth_label = datetime.combine(birth_date, birth_time).strftime("%d %b %Y %H:%M")
+                    else:
+                        local_birth_label = f"{birth_date.strftime('%d %b %Y')} (jam tidak diketahui)"
 
-                st.session_state["forecast_result"] = forecast
-                st.session_state["forecast_birth_label"] = local_birth_label
-                st.session_state["forecast_place"] = birth_place.strip()
-                append_debug_log(
-                    f"submit:result_saved elapsed={perf_counter() - started_at:.2f}s sections={len(forecast)}"
-                )
+                    st.session_state["forecast_result"] = forecast
+                    st.session_state["forecast_birth_label"] = local_birth_label
+                    st.session_state["forecast_place"] = birth_place.strip()
+                    append_debug_log(
+                        f"submit:result_saved elapsed={perf_counter() - started_at:.2f}s sections={len(forecast)}"
+                    )
 
     forecast = st.session_state.get("forecast_result")
     if not forecast:

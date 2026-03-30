@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -265,36 +266,132 @@ def generate_fallback_fortune(
     life_path = context.life_path_number
     personal_year = context.personal_year_number
     bazi_hint = context.bazi_estimate.split(",")[0].replace("Tahun ", "")
+    birth_time_note = (
+        "jam lahirmu ikut bikin timing-nya lebih spesifik"
+        if is_birth_time_known and birth_time is not None
+        else "karena jam lahir belum diketahui, bacaan ini sengaja dibikin lebih fleksibel"
+    )
+    place_hint = describe_place_energy(context.birth_place, context.timezone_name)
+    momentum = pick_variant(
+        "momentum",
+        birth_date.isoformat(),
+        birth_place.lower(),
+        question_focus,
+        period_key,
+        str(life_path),
+    )
+    strategy = pick_variant(
+        "strategy",
+        birth_date.isoformat(),
+        birth_place.lower(),
+        context.western_sign,
+        context.vedic_sign_estimate,
+    )
+    social_mode = pick_variant(
+        "social",
+        birth_place.lower(),
+        question_focus,
+        period_key,
+        str(personal_year),
+    )
+    caution = pick_variant(
+        "caution",
+        birth_date.isoformat(),
+        context.bazi_estimate,
+        context.zi_wei_estimate,
+        question_focus,
+    )
+    anchor = pick_variant(
+        "anchor",
+        birth_place.lower(),
+        context.timezone_name,
+        str(life_path),
+        str(personal_year),
+    )
 
     sections = {
         "BaZi": (
-            f"BaZi kamu lagi mendorong mode gerak yang lebih taktis untuk {period_phrase}. "
-            f"Vibe {bazi_hint} cocok buat pilih langkah yang simpel tapi tepat, terutama soal {focus_label}. "
-            f"Jangan kebanyakan ancang-ancang."
+            f"BaZi kamu buat {period_phrase} kebaca lebih {momentum}. "
+            f"Vibe {bazi_hint} enaknya dipakai buat {strategy}, terutama di area {focus_label}. "
+            f"{birth_time_note.capitalize()}."
         ),
         "Western Astrology": (
-            f"Sebagai {sign}, kamu lagi bagus saat berani kelihatan jelas maunya. "
-            f"Untuk {period_phrase}, peluang datang waktu kamu stop overthinking dan kasih respons yang tegas pada urusan {focus_label}."
+            f"Sebagai {sign}, kamu lagi lebih kuat kalau maunya dibikin kelihatan, bukan disimpan rapi di kepala. "
+            f"Untuk {period_phrase}, peluang biasanya kebuka waktu kamu pilih gaya {social_mode} saat ngurus {focus_label}."
         ),
         "Zi Wei Dou Shu": (
-            f"Chart estimasimu nunjukin momentum naik pelan tapi rapi. "
-            f"Fokus {period_phrase} bukan ngebut, tapi naruh energi di orang, jadwal, dan pilihan yang paling ngangkat area {focus_label}."
+            f"Zi Wei Dou Shu estimasimu nunjukin ritme yang lebih enak kalau tenaga ditaruh ke hal yang jelas efeknya. "
+            f"Di {period_phrase}, dorongan terbaik datang dari {anchor} buat urusan {focus_label}, bukan dari langkah yang terlalu penuh gaya."
         ),
         "Numerologi": (
-            f"Life path {life_path} dengan personal year {personal_year} bikin tema kamu sekarang soal arah yang lebih matang. "
-            f"Untuk {focus_label}, pilih yang paling konsisten dijaga, bukan yang paling dramatis kelihatannya."
+            f"Life path {life_path} ketemu personal year {personal_year} bikin tema kamu sekarang condong ke pola yang lebih dewasa dan kepakai lama. "
+            f"Buat {focus_label}, pilih langkah yang {caution}, bukan yang cuma seru di awal."
         ),
         "Vedic Astrology": (
-            f"Nuansa {vedic_sign} kasih sinyal buat lebih peka sama timing. "
-            f"Di {period_phrase}, dorongan terbaik muncul kalau kamu nurunin noise, lalu bergerak pas insting soal {focus_label} mulai terasa tenang."
+            f"Nuansa {vedic_sign} kasih sinyal kalau timing kamu lagi nyambung saat kepala nggak terlalu ramai. "
+            f"Di {period_phrase}, {place_hint}; dari situ insting soal {focus_label} biasanya jadi lebih gampang dipercaya."
         ),
         "Intinya": (
-            f"Madame bilang: {period_phrase} ini bukan waktunya sok misterius. "
-            f"Jelasin maumu, rapihin prioritas, dan pilih langkah yang paling ringan buat dijalanin terus. "
-            f"Pelan-pelan juga tetap kelihatan mahal."
+            f"Madame bilang: {period_phrase} ini paling cakep kalau kamu mainnya {strategy}, bukan reaktif. "
+            f"Rapihin prioritas, ambil langkah yang {momentum}, dan biarin hasilnya naik dari konsistensi. "
+            f"Nggak usah ribet buat tetap kelihatan mahal."
         ),
     }
     return {section: trim_words(text, limit=50) for section, text in sections.items()}
+
+
+def pick_variant(bucket: str, *parts: str) -> str:
+    variants = {
+        "momentum": [
+            "tajam tapi hemat gerak",
+            "pelan tapi ngunci",
+            "lebih taktis daripada spontan",
+            "rapi dan minim drama",
+            "tenang tapi susah digeser",
+        ],
+        "strategy": [
+            "langsung dan elegan",
+            "simple tapi presisi",
+            "rapi tanpa banyak ancang-ancang",
+            "kalem tapi jelas arahnya",
+            "praktis dan nggak muter-muter",
+        ],
+        "social": [
+            "tegas tapi tetap manis",
+            "hangat tapi nggak ngasih sinyal campur aduk",
+            "jelas, santai, dan nggak defensif",
+            "ringan tapi tahu batas",
+            "jujur tanpa bikin suasana berat",
+        ],
+        "caution": [
+            "bisa dijaga ritmenya",
+            "punya efek nyata dalam beberapa langkah ke depan",
+            "nggak bikin kamu capek ngejar image",
+            "lebih stabil daripada heboh",
+            "masuk akal buat diulang terus",
+        ],
+        "anchor": [
+            "merapikan jadwal dan orang yang kamu kasih akses",
+            "milih satu prioritas lalu jagain fokusnya",
+            "ngurangin distraksi sebelum mutusin langkah berikutnya",
+            "nahan diri buat nggak jawab semua hal sekaligus",
+            "balik ke rutinitas yang bikin kamu terasa nyambung lagi",
+        ],
+    }
+    pool = variants[bucket]
+    seed = "|".join(part.strip().lower() for part in parts if part).encode("utf-8")
+    digest = hashlib.sha256(seed).hexdigest()
+    return pool[int(digest[:8], 16) % len(pool)]
+
+
+def describe_place_energy(place: str, timezone_name: str) -> str:
+    cleaned_place = place.strip()
+    if not cleaned_place:
+        return "coba pakai patokan yang sederhana dulu"
+    city = cleaned_place.split(",")[0].strip()
+    if timezone_name == "UTC":
+        return f"karena lokasi {city} belum kebaca presisi, pakai sinyal yang paling konsisten dulu"
+    return f"nuansa tempat asalmu di {city} bikin kamu lebih peka sama ritme sekitar"
 
 
 def request_fortune_completion(
