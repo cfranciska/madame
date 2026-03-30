@@ -521,7 +521,7 @@ def main() -> None:
                         st.session_state["forecast_notice"] = (
                             f"Model utama gagal membuat ramalan. Tidak ada output yang ditampilkan. Detail: {exc}"
                         )
-                        st.session_state["forecast_error_detail"] = None
+                        st.session_state["forecast_error_detail"] = traceback.format_exc()
                     except Exception:
                         append_debug_log("submit:unexpected_error")
                         st.session_state["forecast_notice"] = (

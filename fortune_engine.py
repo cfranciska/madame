@@ -421,7 +421,7 @@ def request_fortune_completion(
     ]
     last_error: Exception | None = None
 
-    for attempt in attempts:
+    for index, attempt in enumerate(attempts, start=1):
         kwargs = {
             "model": model,
             "messages": messages,
@@ -435,6 +435,7 @@ def request_fortune_completion(
             if debug_log:
                 debug_log(
                     "request_fortune_completion:attempt "
+                    f"index={index}/{len(attempts)} "
                     f"response_format={attempt['response_format'] is not None} "
                     f"reasoning_effort={attempt['include_reasoning_effort']}"
                 )
@@ -447,7 +448,10 @@ def request_fortune_completion(
         except FortuneError as exc:
             last_error = exc
             if debug_log:
-                debug_log(f"request_fortune_completion:attempt_failed error={exc}")
+                debug_log(
+                    "request_fortune_completion:attempt_failed "
+                    f"index={index}/{len(attempts)} error_type={type(exc).__name__} error={exc}"
+                )
 
     raise FortuneError(f"Gagal meminta respons ke model: {last_error}")
 
@@ -466,39 +470,79 @@ def post_chat_completion(*, endpoint: str, api_key: str, payload: dict, debug_lo
 
     try:
         if debug_log:
-            debug_log(f"post_chat_completion:open url={endpoint}")
+            debug_log(
+                "post_chat_completion:open "
+                f"url={endpoint} timeout={DEFAULT_OPENAI_TIMEOUT_SECONDS}s body_chars={len(body)}"
+            )
         with urlopen(request, timeout=DEFAULT_OPENAI_TIMEOUT_SECONDS) as response:
+            status_code = getattr(response, "status", None) or response.getcode()
             raw = response.read().decode("utf-8")
         if debug_log:
-            debug_log(f"post_chat_completion:response_bytes chars={len(raw)}")
+            debug_log(
+                "post_chat_completion:response_received "
+                f"status={status_code} chars={len(raw)}"
+            )
     except HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
+        if debug_log:
+            debug_log(
+                "post_chat_completion:http_error "
+                f"status={exc.code} reason={exc.reason} details={details[:200]}"
+            )
         raise FortuneError(f"HTTP {exc.code} dari OpenAI: {details[:300]}") from exc
     except URLError as exc:
+        if debug_log:
+            debug_log(
+                "post_chat_completion:url_error "
+                f"reason_type={type(exc.reason).__name__} reason={exc.reason}"
+            )
         raise FortuneError(f"Koneksi ke OpenAI gagal: {exc.reason}") from exc
     except TimeoutError as exc:
+        if debug_log:
+            debug_log("post_chat_completion:timeout")
         raise FortuneError("Request ke OpenAI timeout.") from exc
     except Exception as exc:
+        if debug_log:
+            debug_log(
+                "post_chat_completion:unexpected_exception "
+                f"error_type={type(exc).__name__} error={exc}"
+            )
         raise FortuneError(f"Request ke OpenAI gagal: {exc}") from exc
 
     try:
         response_payload = json.loads(raw)
     except json.JSONDecodeError as exc:
+        if debug_log:
+            debug_log(f"post_chat_completion:invalid_json snippet={raw[:200]}")
         raise FortuneError("Respons OpenAI bukan JSON valid.") from exc
 
     try:
         message = response_payload["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
+        if debug_log:
+            debug_log(
+                "post_chat_completion:unexpected_response_shape "
+                f"snippet={str(response_payload)[:200]}"
+            )
         raise FortuneError(f"Format respons OpenAI tidak dikenali: {str(response_payload)[:300]}") from exc
 
     if isinstance(message, str):
+        if debug_log:
+            debug_log(f"post_chat_completion:message_ready type=str chars={len(message)}")
         return message.strip()
     if isinstance(message, list):
         texts: list[str] = []
         for item in message:
             if isinstance(item, dict) and item.get("text"):
                 texts.append(str(item["text"]))
+        if debug_log:
+            debug_log(
+                "post_chat_completion:message_ready "
+                f"type=list text_parts={len(texts)} chars={len(''.join(texts))}"
+            )
         return "\n".join(texts).strip()
+    if debug_log:
+        debug_log(f"post_chat_completion:message_ready type={type(message).__name__}")
     return str(message).strip()
 
 
