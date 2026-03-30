@@ -28,8 +28,8 @@ SECTION_ORDER = [
 ]
 
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
-DEFAULT_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "minimal")
-DEFAULT_OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "45"))
+DEFAULT_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "")
+DEFAULT_OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
 SYSTEM_PROMPT = """Anda adalah peramal profesional multidisiplin yang menggabungkan lima sistem ramalan klasik:
 BaZi
 Western Astrology
@@ -312,34 +312,16 @@ def request_fortune_completion(
 ):
     attempts = [
         {
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "fortune_sections",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "BaZi": {"type": "string"},
-                            "Western Astrology": {"type": "string"},
-                            "Zi Wei Dou Shu": {"type": "string"},
-                            "Numerologi": {"type": "string"},
-                            "Vedic Astrology": {"type": "string"},
-                            "Intinya": {"type": "string"},
-                        },
-                        "required": SECTION_ORDER,
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            "include_reasoning_effort": True,
-        },
-        {
             "response_format": {"type": "json_object"},
-            "include_reasoning_effort": True,
+            "include_reasoning_effort": False,
         },
         {
             "response_format": None,
             "include_reasoning_effort": False,
+        },
+        {
+            "response_format": {"type": "json_object"},
+            "include_reasoning_effort": True,
         },
     ]
     last_error: Exception | None = None

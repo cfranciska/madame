@@ -444,8 +444,8 @@ def main() -> None:
             )
 
             api_key = get_setting("OPENAI_API_KEY")
-            model = get_setting("OPENAI_MODEL", "gpt-5-mini")
-            reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "minimal")
+            model = get_setting("OPENAI_MODEL", "gpt-4o-mini")
+            reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "")
             base_url = get_setting("OPENAI_BASE_URL")
             append_debug_log(
                 f"submit:settings_loaded api_key={'yes' if bool(api_key) else 'no'} "
