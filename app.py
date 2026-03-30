@@ -505,7 +505,7 @@ def main() -> None:
                     question_focus=question_focus,
                 )
                 st.session_state["forecast_notice"] = (
-                    "Mode stabil aktif. Ramalan dibuat dari engine lokal agar hasil langsung keluar di Streamlit Cloud."
+                    "Mode stabil aktif."
                 )
                 st.session_state["forecast_error_detail"] = None
                 if birth_time is not None:
