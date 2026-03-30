@@ -32,9 +32,12 @@ pinned: false
 Tambahkan secret berikut di menu app `Settings > Secrets`:
 
 - `OPENAI_API_KEY` wajib
-- `OPENAI_MODEL` opsional, default `gpt-5-mini`
+- `OPENAI_ENABLED` opsional, default `false`
+- `OPENAI_MODEL` opsional, default `gpt-4o-mini`
 - `OPENAI_REASONING_EFFORT` opsional, default `minimal`
 - `OPENAI_BASE_URL` opsional untuk endpoint OpenAI-compatible
+
+Secara default app memakai engine lokal agar stabil di Streamlit Community Cloud. Jika benar-benar ingin memanggil OpenAI, set `OPENAI_ENABLED=true`.
 
 Isi value secret dengan nilai mentah saja. Contoh yang benar untuk `OPENAI_API_KEY`:
 

@@ -346,6 +346,10 @@ def strip_wrapping_quotes(value: str) -> str:
     return value
 
 
+def is_truthy(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @st.cache_data(show_spinner=False)
 def encode_image(path: str) -> str:
     image_bytes = Path(path).read_bytes()
@@ -470,22 +474,50 @@ def main() -> None:
             model = get_setting("OPENAI_MODEL", "gpt-4o-mini")
             reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "")
             base_url = get_setting("OPENAI_BASE_URL")
+            openai_enabled = is_truthy(get_setting("OPENAI_ENABLED", "false"))
             append_debug_log(
                 f"submit:settings_loaded api_key={'yes' if bool(api_key) else 'no'} "
-                f"model={model} reasoning={reasoning_effort} base_url={'set' if bool(base_url) else 'default'}"
+                f"model={model} reasoning={reasoning_effort} base_url={'set' if bool(base_url) else 'default'} "
+                f"openai_enabled={openai_enabled}"
             )
 
-            if not api_key:
+            if openai_enabled and not api_key:
                 append_debug_log("submit:missing_api_key")
                 st.error(
                     "`OPENAI_API_KEY` belum tersedia. Untuk local run, isi `.streamlit/secrets.toml`. "
                     "Untuk Streamlit Community Cloud, tambahkan di Settings > Secrets."
                 )
-            elif "\n" in api_key or api_key.startswith("OPENAI_API_KEY="):
+            elif openai_enabled and ("\n" in api_key or api_key.startswith("OPENAI_API_KEY=")):
                 append_debug_log("submit:invalid_api_key_format")
                 st.error(
                     "`OPENAI_API_KEY` tidak valid. Isi secret hanya dengan nilai key-nya saja, "
                     "misalnya `sk-...`, bukan format `.env` seperti `OPENAI_API_KEY=sk-...`."
+                )
+            elif not openai_enabled:
+                append_debug_log("submit:using_local_engine")
+                forecast = generate_fallback_fortune(
+                    birth_date=birth_date,
+                    birth_time=birth_time,
+                    is_birth_time_known=is_birth_time_known,
+                    birth_place=birth_place.strip(),
+                    period_label=period_label,
+                    period_key=PERIOD_OPTIONS[period_label],
+                    question_focus=question_focus,
+                )
+                st.session_state["forecast_notice"] = (
+                    "Mode stabil aktif. Ramalan dibuat dari engine lokal agar hasil langsung keluar di Streamlit Cloud."
+                )
+                st.session_state["forecast_error_detail"] = None
+                if birth_time is not None:
+                    local_birth_label = datetime.combine(birth_date, birth_time).strftime("%d %b %Y %H:%M")
+                else:
+                    local_birth_label = f"{birth_date.strftime('%d %b %Y')} (jam tidak diketahui)"
+
+                st.session_state["forecast_result"] = forecast
+                st.session_state["forecast_birth_label"] = local_birth_label
+                st.session_state["forecast_place"] = birth_place.strip()
+                append_debug_log(
+                    f"submit:result_saved elapsed={perf_counter() - started_at:.2f}s sections={len(forecast)}"
                 )
             else:
                 with st.spinner("Madame sedang menyusun arah energimu..."):
