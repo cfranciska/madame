@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from geopy.geocoders import Nominatim
+from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, RateLimitError
 
 try:
     from lunardate import LunarDate
@@ -34,6 +35,7 @@ DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 DEFAULT_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "")
 DEFAULT_OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
 DEFAULT_OPENAI_RETRY_COUNT = int(os.getenv("OPENAI_RETRY_COUNT", "3"))
+DEFAULT_OPENAI_SDK_RETRIES = int(os.getenv("OPENAI_SDK_RETRIES", "2"))
 SYSTEM_PROMPT = """Anda adalah peramal profesional multidisiplin yang menggabungkan lima sistem ramalan klasik:
 BaZi
 Western Astrology
@@ -491,6 +493,123 @@ def request_fortune_completion(
 
 
 def post_chat_completion(*, endpoint: str, api_key: str, payload: dict, debug_log=None) -> str:
+    sdk_error: Exception | None = None
+    try:
+        return post_chat_completion_via_sdk(
+            endpoint=endpoint,
+            api_key=api_key,
+            payload=payload,
+            debug_log=debug_log,
+        )
+    except FortuneError as exc:
+        sdk_error = exc
+        if debug_log:
+            debug_log(f"post_chat_completion:sdk_failed error={exc}")
+
+    if debug_log:
+        debug_log("post_chat_completion:fallback_to_urllib")
+    return post_chat_completion_via_urllib(
+        endpoint=endpoint,
+        api_key=api_key,
+        payload=payload,
+        debug_log=debug_log,
+        prior_error=sdk_error,
+    )
+
+
+def post_chat_completion_via_sdk(*, endpoint: str, api_key: str, payload: dict, debug_log=None) -> str:
+    base_url = endpoint.removesuffix("/chat/completions")
+    client = OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        timeout=DEFAULT_OPENAI_TIMEOUT_SECONDS,
+        max_retries=DEFAULT_OPENAI_SDK_RETRIES,
+    )
+    request_kwargs = {
+        "model": payload["model"],
+        "messages": payload["messages"],
+    }
+    if payload.get("response_format") is not None:
+        request_kwargs["response_format"] = payload["response_format"]
+    if payload.get("reasoning_effort"):
+        request_kwargs["reasoning_effort"] = payload["reasoning_effort"]
+    if payload.get("max_tokens") is not None:
+        request_kwargs["max_tokens"] = payload["max_tokens"]
+    if payload.get("temperature") is not None:
+        request_kwargs["temperature"] = payload["temperature"]
+
+    try:
+        if debug_log:
+            debug_log(
+                "post_chat_completion:sdk_open "
+                f"timeout={DEFAULT_OPENAI_TIMEOUT_SECONDS}s sdk_retries={DEFAULT_OPENAI_SDK_RETRIES}"
+            )
+        response = client.chat.completions.create(**request_kwargs)
+        if debug_log:
+            debug_log("post_chat_completion:sdk_response_received")
+    except APITimeoutError as exc:
+        if debug_log:
+            debug_log("post_chat_completion:sdk_timeout")
+        raise FortuneError("Request ke OpenAI timeout.") from exc
+    except RateLimitError as exc:
+        if debug_log:
+            debug_log(f"post_chat_completion:sdk_rate_limit status={getattr(exc, 'status_code', 'unknown')}")
+        raise FortuneError(f"Rate limit dari OpenAI: {exc}") from exc
+    except APIConnectionError as exc:
+        if debug_log:
+            debug_log(f"post_chat_completion:sdk_connection_error error={exc}")
+        raise FortuneError(f"Koneksi ke OpenAI gagal: {exc}") from exc
+    except APIStatusError as exc:
+        if debug_log:
+            debug_log(
+                "post_chat_completion:sdk_status_error "
+                f"status={exc.status_code} body={str(exc.response)[:200]}"
+            )
+        raise FortuneError(f"HTTP {exc.status_code} dari OpenAI: {exc}") from exc
+    except Exception as exc:
+        if debug_log:
+            debug_log(
+                "post_chat_completion:sdk_unexpected_exception "
+                f"error_type={type(exc).__name__} error={exc}"
+            )
+        raise FortuneError(f"Request ke OpenAI gagal: {exc}") from exc
+
+    try:
+        message = response.choices[0].message.content
+    except (AttributeError, IndexError, TypeError) as exc:
+        if debug_log:
+            debug_log("post_chat_completion:sdk_bad_response_shape")
+        raise FortuneError("Format respons OpenAI tidak dikenali.") from exc
+
+    if isinstance(message, str):
+        if debug_log:
+            debug_log(f"post_chat_completion:sdk_message_ready type=str chars={len(message)}")
+        return message.strip()
+    if isinstance(message, list):
+        texts: list[str] = []
+        for item in message:
+            text_value = getattr(item, "text", None)
+            if text_value:
+                texts.append(str(text_value))
+        if debug_log:
+            debug_log(
+                "post_chat_completion:sdk_message_ready "
+                f"type=list text_parts={len(texts)} chars={len(''.join(texts))}"
+            )
+        return "\n".join(texts).strip()
+    if debug_log:
+        debug_log(f"post_chat_completion:sdk_message_ready type={type(message).__name__}")
+    return str(message).strip()
+
+
+def post_chat_completion_via_urllib(
+    *,
+    endpoint: str,
+    api_key: str,
+    payload: dict,
+    debug_log=None,
+    prior_error: Exception | None = None,
+) -> str:
     body = json.dumps(payload).encode("utf-8")
     last_error: Exception | None = None
 
@@ -576,6 +695,8 @@ def post_chat_completion(*, endpoint: str, api_key: str, payload: dict, debug_lo
                 )
             raise FortuneError(f"Request ke OpenAI gagal: {exc}") from exc
     else:
+        if prior_error is not None:
+            raise FortuneError(f"SDK dan fallback request gagal. SDK: {prior_error}; urllib: {last_error}")
         raise FortuneError(f"Request ke OpenAI gagal setelah retry: {last_error}")
 
     try:
