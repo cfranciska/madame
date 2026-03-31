@@ -11,11 +11,6 @@ import streamlit as st
 
 import fortune_engine
 
-FortuneError = fortune_engine.FortuneError
-generate_fallback_fortune = fortune_engine.generate_fallback_fortune
-generate_fortune = fortune_engine.generate_fortune
-run_openai_smoke_test = fortune_engine.run_openai_smoke_test
-
 
 st.set_page_config(
     page_title="madame, help!",
@@ -291,7 +286,6 @@ def ensure_app_state() -> None:
     st.session_state.setdefault("forecast_notice", None)
     st.session_state.setdefault("forecast_error_detail", None)
     st.session_state.setdefault("forecast_debug_log", [])
-    st.session_state.setdefault("forecast_cache", {})
 
 
 def append_debug_log(message: str) -> None:
@@ -303,44 +297,6 @@ def append_debug_log(message: str) -> None:
         # If the Streamlit session is being torn down, skip logging instead of
         # surfacing an internal SessionInfo error to the user.
         return
-
-
-def build_forecast_cache_key(
-    *,
-    birth_date: date,
-    birth_time_label: str,
-    birth_place: str,
-    period_label: str,
-    question_focus: str,
-    model: str,
-    base_url: str,
-) -> str:
-    normalized_place = " ".join(birth_place.strip().lower().split())
-    return "|".join(
-        [
-            birth_date.isoformat(),
-            birth_time_label.strip(),
-            normalized_place,
-            period_label.strip(),
-            question_focus.strip(),
-            model.strip(),
-            base_url.strip(),
-        ]
-    )
-
-
-def load_cached_forecast(cache_key: str) -> dict[str, str] | None:
-    cache = st.session_state.get("forecast_cache") or {}
-    cached = cache.get(cache_key)
-    if isinstance(cached, dict):
-        return {str(key): str(value) for key, value in cached.items()}
-    return None
-
-
-def save_cached_forecast(cache_key: str, forecast: dict[str, str]) -> None:
-    cache = st.session_state.setdefault("forecast_cache", {})
-    cache[cache_key] = dict(forecast)
-
 
 def get_setting(name: str, default: str = "") -> str:
     value = os.getenv(name)
@@ -391,13 +347,6 @@ def strip_wrapping_quotes(value: str) -> str:
 
 def is_truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def is_supported_remote_provider(base_url: str) -> bool:
-    cleaned = (base_url or "").strip().lower()
-    if not cleaned:
-        return True
-    return "api.openai.com" in cleaned
 
 
 @st.cache_data(show_spinner=False)
@@ -525,70 +474,18 @@ def main() -> None:
             reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "")
             base_url = get_setting("OPENAI_BASE_URL")
             openai_enabled = is_truthy(get_setting("OPENAI_ENABLED", "false"))
-            openai_smoke_test = is_truthy(get_setting("OPENAI_SMOKE_TEST", "false"))
+            remote_enabled = openai_enabled or bool(api_key) or bool(base_url)
             append_debug_log(
                 f"submit:settings_loaded api_key={'yes' if bool(api_key) else 'no'} "
                 f"model={model} reasoning={reasoning_effort} base_url={'set' if bool(base_url) else 'default'} "
-                f"openai_enabled={openai_enabled} smoke_test={openai_smoke_test}"
+                f"openai_enabled={openai_enabled} remote_enabled={remote_enabled}"
             )
-            cache_key = build_forecast_cache_key(
-                birth_date=birth_date,
-                birth_time_label=birth_time_label,
-                birth_place=birth_place,
-                period_label=period_label,
-                question_focus=question_focus,
-                model=model,
-                base_url=base_url or "",
-            )
-
-            if openai_enabled and not api_key:
-                append_debug_log("submit:missing_api_key")
-                st.error(
-                    "`OPENAI_API_KEY` belum tersedia. Untuk local run, isi `.streamlit/secrets.toml`. "
-                    "Untuk Streamlit Community Cloud, tambahkan di Settings > Secrets."
-                )
-            elif openai_enabled and ("\n" in api_key or api_key.startswith("OPENAI_API_KEY=")):
-                append_debug_log("submit:invalid_api_key_format")
-                st.error(
-                    "`OPENAI_API_KEY` tidak valid. Isi secret hanya dengan nilai key-nya saja, "
-                    "misalnya `sk-...`, bukan format `.env` seperti `OPENAI_API_KEY=sk-...`."
-                )
-            elif not openai_enabled:
-                append_debug_log("submit:openai_disabled")
-                st.session_state["forecast_notice"] = (
-                    "Engine utama sedang dimatikan. Ramalan tidak ditampilkan sampai `OPENAI_ENABLED=true`."
-                )
-                st.session_state["forecast_error_detail"] = None
-            elif not is_supported_remote_provider(base_url):
-                append_debug_log("submit:custom_provider_skipped")
-                forecast = generate_fallback_fortune(
-                    birth_date=birth_date,
-                    birth_time=birth_time,
-                    is_birth_time_known=is_birth_time_known,
-                    birth_place=birth_place.strip(),
-                    period_label=period_label,
-                    period_key=PERIOD_OPTIONS[period_label],
-                    question_focus=question_focus,
-                )
-                st.session_state["forecast_notice"] = (
-                    "Mode stabil aktif: custom provider OpenAI-compatible dilewati karena sering tidak konsisten. "
-                    "App memakai engine lokal agar hasil tetap keluar."
-                )
-                st.session_state["forecast_error_detail"] = None
-            else:
-                with st.spinner("Madame sedang menyusun arah energimu..."):
-                    try:
-                        if openai_smoke_test:
-                            append_debug_log("submit:running_smoke_test")
-                            run_openai_smoke_test(
-                                api_key=api_key,
-                                model=model,
-                                base_url=base_url or None,
-                                debug_log=append_debug_log,
-                            )
-                            append_debug_log("submit:smoke_test_ok")
-                        append_debug_log("submit:calling_generate_fortune")
-                        forecast = generate_fortune(
+            with st.spinner("Madame sedang menyusun arah energimu..."):
+                forecast = None
+                try:
+                    if remote_enabled:
+                        append_debug_log("submit:generate_fortune_start")
+                        forecast = fortune_engine.generate_fortune(
                             api_key=api_key,
                             model=model,
                             reasoning_effort=reasoning_effort,
@@ -602,66 +499,65 @@ def main() -> None:
                             question_focus=question_focus,
                             debug_log=append_debug_log,
                         )
-                    except FortuneError as exc:
-                        append_debug_log(f"submit:fortune_error error={exc}")
-                        cached_forecast = load_cached_forecast(cache_key)
-                        if cached_forecast:
-                            append_debug_log("submit:using_cached_forecast")
-                            forecast = cached_forecast
-                            st.session_state["forecast_notice"] = (
-                                f"Model utama sedang tidak stabil, jadi app memakai hasil sukses terakhir untuk input yang sama. Detail: {exc}"
-                            )
-                        else:
-                            append_debug_log("submit:using_fallback_fortune")
-                            forecast = generate_fallback_fortune(
-                                birth_date=birth_date,
-                                birth_time=birth_time,
-                                is_birth_time_known=is_birth_time_known,
-                                birth_place=birth_place.strip(),
-                                period_label=period_label,
-                                period_key=PERIOD_OPTIONS[period_label],
-                                question_focus=question_focus,
-                            )
-                            st.session_state["forecast_notice"] = (
-                                f"Model utama gagal membuat ramalan, jadi app memakai fallback lokal. Detail: {exc}"
-                            )
-                        st.session_state["forecast_error_detail"] = traceback.format_exc()
-                    except Exception:
-                        append_debug_log("submit:unexpected_error")
-                        cached_forecast = load_cached_forecast(cache_key)
-                        if cached_forecast:
-                            append_debug_log("submit:using_cached_forecast")
-                            forecast = cached_forecast
-                            st.session_state["forecast_notice"] = (
-                                "Koneksi atau proses engine utama sedang tidak stabil, jadi app memakai hasil sukses terakhir untuk input yang sama. "
-                                "Buka detail error di bawah kalau perlu."
-                            )
-                        else:
-                            append_debug_log("submit:using_fallback_fortune")
-                            forecast = generate_fallback_fortune(
-                                birth_date=birth_date,
-                                birth_time=birth_time,
-                                is_birth_time_known=is_birth_time_known,
-                                birth_place=birth_place.strip(),
-                                period_label=period_label,
-                                period_key=PERIOD_OPTIONS[period_label],
-                                question_focus=question_focus,
-                            )
-                            st.session_state["forecast_notice"] = (
-                                "Koneksi atau proses engine utama gagal, jadi app memakai fallback lokal. "
-                                "Buka detail error di bawah kalau perlu."
-                            )
-                        st.session_state["forecast_error_detail"] = traceback.format_exc()
-                    else:
                         append_debug_log("submit:generate_fortune_ok")
-                        save_cached_forecast(cache_key, forecast)
-                        append_debug_log("submit:forecast_cached")
                         st.session_state["forecast_notice"] = None
                         st.session_state["forecast_error_detail"] = None
-                    finally:
-                        append_debug_log("submit:spinner_done")
+                    else:
+                        append_debug_log("submit:generate_fallback_fortune_start")
+                        forecast = fortune_engine.generate_fallback_fortune(
+                            birth_date=birth_date,
+                            birth_time=birth_time,
+                            is_birth_time_known=is_birth_time_known,
+                            birth_place=birth_place.strip(),
+                            period_label=period_label,
+                            period_key=PERIOD_OPTIONS[period_label],
+                            question_focus=question_focus,
+                        )
+                        append_debug_log("submit:generate_fallback_fortune_ok")
+                        st.session_state["forecast_notice"] = (
+                            "API belum dikonfigurasi, jadi app pakai fallback sederhana."
+                        )
+                        st.session_state["forecast_error_detail"] = None
+                except Exception:
+                    primary_error = traceback.format_exc()
+                    if remote_enabled:
+                        append_debug_log("submit:generate_fortune_failed_try_fallback")
+                        try:
+                            forecast = fortune_engine.generate_fallback_fortune(
+                                birth_date=birth_date,
+                                birth_time=birth_time,
+                                is_birth_time_known=is_birth_time_known,
+                                birth_place=birth_place.strip(),
+                                period_label=period_label,
+                                period_key=PERIOD_OPTIONS[period_label],
+                                question_focus=question_focus,
+                            )
+                        except Exception:
+                            append_debug_log("submit:fallback_after_remote_failed")
+                            st.session_state["forecast_notice"] = (
+                                "Model remote dan fallback lokal sama-sama gagal. Buka detail error di bawah kalau perlu."
+                            )
+                            st.session_state["forecast_error_detail"] = (
+                                primary_error
+                                + "\n\n=== FALLBACK ERROR ===\n\n"
+                                + traceback.format_exc()
+                            )
+                        else:
+                            append_debug_log("submit:fallback_after_remote_ok")
+                            st.session_state["forecast_notice"] = (
+                                "Model remote sempat gagal, jadi app lanjut pakai fallback sederhana."
+                            )
+                            st.session_state["forecast_error_detail"] = primary_error
+                    else:
+                        append_debug_log("submit:unexpected_error")
+                        st.session_state["forecast_notice"] = (
+                            "Fallback lokal gagal membuat ramalan. Buka detail error di bawah kalau perlu."
+                        )
+                        st.session_state["forecast_error_detail"] = primary_error
+                finally:
+                    append_debug_log("submit:spinner_done")
 
-                if "forecast" in locals():
+                if forecast:
                     if birth_time is not None:
                         local_birth_label = datetime.combine(birth_date, birth_time).strftime("%d %b %Y %H:%M")
                     else:

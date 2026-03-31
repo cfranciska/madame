@@ -35,9 +35,7 @@ Tambahkan secret berikut di menu app `Settings > Secrets`:
 - `OPENAI_REASONING_EFFORT` opsional, default `minimal`
 - `OPENAI_BASE_URL` opsional untuk endpoint OpenAI-compatible
 
-Secara default app memakai engine lokal agar stabil di Streamlit Community Cloud. Jika benar-benar ingin memanggil OpenAI, set `OPENAI_ENABLED=true`.
-
-Untuk mode stabil, app hanya mencoba endpoint OpenAI resmi. Jika `OPENAI_BASE_URL` diarahkan ke gateway OpenAI-compatible pihak ketiga, app akan otomatis kembali ke engine lokal agar UX tetap konsisten.
+Saat ini jalur submit memakai engine lokal agar hasil stabil di Streamlit Community Cloud. Secret `OPENAI_*` boleh tetap disimpan untuk eksperimen, tapi tidak dipakai di alur utama sampai integrasi remote dibuat lebih andal.
 
 Isi value secret dengan nilai mentah saja. Contoh yang benar untuk `OPENAI_API_KEY`:
 
@@ -77,6 +75,6 @@ Jangan commit `.streamlit/secrets.toml`. Secret itu hanya untuk local run.
 
 ## Catatan
 
-- Tempat lahir dicoba di-normalisasi ke zona waktu dengan geocoding. Jika gagal, app memakai fallback estimasi yang konsisten.
-- Jika jam lahir `Tidak Tahu`, engine akan memperlakukan jam lahir sebagai `unknown`, bukan memaksakan `12:00`.
-- Output ditampilkan dalam empat bagian tetap, sesuai urutan UI.
+- `fortune_engine.py` sekarang meneruskan input mentah pengguna langsung ke LLM tanpa geocoding atau konversi lokal.
+- Jika jam lahir `Tidak Tahu`, prompt akan menandainya sebagai tidak diketahui agar model tidak terlalu presisi.
+- Output tetap ditampilkan dalam empat bagian tetap, sesuai urutan UI.
