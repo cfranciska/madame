@@ -37,6 +37,8 @@ Tambahkan secret berikut di menu app `Settings > Secrets`:
 
 Secara default app memakai engine lokal agar stabil di Streamlit Community Cloud. Jika benar-benar ingin memanggil OpenAI, set `OPENAI_ENABLED=true`.
 
+Untuk mode stabil, app hanya mencoba endpoint OpenAI resmi. Jika `OPENAI_BASE_URL` diarahkan ke gateway OpenAI-compatible pihak ketiga, app akan otomatis kembali ke engine lokal agar UX tetap konsisten.
+
 Isi value secret dengan nilai mentah saja. Contoh yang benar untuk `OPENAI_API_KEY`:
 
 ```text

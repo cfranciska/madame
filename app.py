@@ -393,6 +393,13 @@ def is_truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def is_supported_remote_provider(base_url: str) -> bool:
+    cleaned = (base_url or "").strip().lower()
+    if not cleaned:
+        return True
+    return "api.openai.com" in cleaned
+
+
 @st.cache_data(show_spinner=False)
 def encode_image(path: str) -> str:
     image_bytes = Path(path).read_bytes()
@@ -550,6 +557,22 @@ def main() -> None:
                 append_debug_log("submit:openai_disabled")
                 st.session_state["forecast_notice"] = (
                     "Engine utama sedang dimatikan. Ramalan tidak ditampilkan sampai `OPENAI_ENABLED=true`."
+                )
+                st.session_state["forecast_error_detail"] = None
+            elif not is_supported_remote_provider(base_url):
+                append_debug_log("submit:custom_provider_skipped")
+                forecast = generate_fallback_fortune(
+                    birth_date=birth_date,
+                    birth_time=birth_time,
+                    is_birth_time_known=is_birth_time_known,
+                    birth_place=birth_place.strip(),
+                    period_label=period_label,
+                    period_key=PERIOD_OPTIONS[period_label],
+                    question_focus=question_focus,
+                )
+                st.session_state["forecast_notice"] = (
+                    "Mode stabil aktif: custom provider OpenAI-compatible dilewati karena sering tidak konsisten. "
+                    "App memakai engine lokal agar hasil tetap keluar."
                 )
                 st.session_state["forecast_error_detail"] = None
             else:
