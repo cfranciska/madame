@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import socket
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from functools import lru_cache
@@ -32,6 +33,7 @@ DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 DEFAULT_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "")
 DEFAULT_OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
 DEFAULT_OPENAI_RETRY_COUNT = int(os.getenv("OPENAI_RETRY_COUNT", "3"))
+DEFAULT_OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "400"))
 SYSTEM_PROMPT = """Anda adalah peramal profesional multidisiplin yang menggabungkan tiga sistem ramalan:
 BaZi
 Western Astrology
@@ -412,6 +414,8 @@ def request_fortune_completion(
         kwargs = {
             "model": model,
             "messages": messages,
+            "max_tokens": DEFAULT_OPENAI_MAX_TOKENS,
+            "temperature": 0.7,
         }
         if attempt["response_format"] is not None:
             kwargs["response_format"] = attempt["response_format"]
@@ -469,6 +473,7 @@ def post_chat_completion_via_urllib(
             method="POST",
             headers={
                 "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json",
                 "Content-Type": "application/json",
             },
         )
@@ -482,6 +487,12 @@ def post_chat_completion_via_urllib(
                 )
             with urlopen(request, timeout=DEFAULT_OPENAI_TIMEOUT_SECONDS) as response:
                 status_code = getattr(response, "status", None) or response.getcode()
+                if debug_log:
+                    debug_log(
+                        "post_chat_completion:headers_received "
+                        f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                        f"status={status_code}"
+                    )
                 raw = response.read().decode("utf-8")
             if debug_log:
                 debug_log(
@@ -521,11 +532,12 @@ def post_chat_completion_via_urllib(
                 last_error = exc
                 continue
             raise FortuneError(f"Koneksi ke OpenAI gagal: {exc.reason}") from exc
-        except TimeoutError as exc:
+        except (TimeoutError, socket.timeout) as exc:
             if debug_log:
                 debug_log(
                     "post_chat_completion:timeout "
-                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT}"
+                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"error_type={type(exc).__name__}"
                 )
             if attempt_index < DEFAULT_OPENAI_RETRY_COUNT:
                 backoff_seconds = attempt_index
@@ -552,6 +564,16 @@ def post_chat_completion_via_urllib(
         if debug_log:
             debug_log(f"post_chat_completion:invalid_json snippet={raw[:200]}")
         raise FortuneError("Respons OpenAI bukan JSON valid.") from exc
+
+    if isinstance(response_payload, dict) and response_payload.get("error"):
+        error_value = response_payload["error"]
+        if isinstance(error_value, dict):
+            error_message = str(error_value.get("message") or error_value)
+        else:
+            error_message = str(error_value)
+        if debug_log:
+            debug_log(f"post_chat_completion:error_payload error={error_message[:200]}")
+        raise FortuneError(f"Provider mengembalikan error: {error_message[:300]}")
 
     try:
         message = response_payload["choices"][0]["message"]["content"]

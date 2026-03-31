@@ -12,6 +12,7 @@ import streamlit as st
 import fortune_engine
 
 FortuneError = fortune_engine.FortuneError
+generate_fallback_fortune = fortune_engine.generate_fallback_fortune
 generate_fortune = fortune_engine.generate_fortune
 run_openai_smoke_test = fortune_engine.run_openai_smoke_test
 
@@ -527,14 +528,34 @@ def main() -> None:
                         )
                     except FortuneError as exc:
                         append_debug_log(f"submit:fortune_error error={exc}")
+                        append_debug_log("submit:using_fallback_fortune")
+                        forecast = generate_fallback_fortune(
+                            birth_date=birth_date,
+                            birth_time=birth_time,
+                            is_birth_time_known=is_birth_time_known,
+                            birth_place=birth_place.strip(),
+                            period_label=period_label,
+                            period_key=PERIOD_OPTIONS[period_label],
+                            question_focus=question_focus,
+                        )
                         st.session_state["forecast_notice"] = (
-                            f"Model utama gagal membuat ramalan. Tidak ada output yang ditampilkan. Detail: {exc}"
+                            f"Model utama gagal membuat ramalan, jadi app memakai fallback lokal. Detail: {exc}"
                         )
                         st.session_state["forecast_error_detail"] = traceback.format_exc()
                     except Exception:
                         append_debug_log("submit:unexpected_error")
+                        append_debug_log("submit:using_fallback_fortune")
+                        forecast = generate_fallback_fortune(
+                            birth_date=birth_date,
+                            birth_time=birth_time,
+                            is_birth_time_known=is_birth_time_known,
+                            birth_place=birth_place.strip(),
+                            period_label=period_label,
+                            period_key=PERIOD_OPTIONS[period_label],
+                            question_focus=question_focus,
+                        )
                         st.session_state["forecast_notice"] = (
-                            "Koneksi atau proses engine utama gagal. Tidak ada output yang ditampilkan. "
+                            "Koneksi atau proses engine utama gagal, jadi app memakai fallback lokal. "
                             "Buka detail error di bawah kalau perlu."
                         )
                         st.session_state["forecast_error_detail"] = traceback.format_exc()
@@ -559,18 +580,23 @@ def main() -> None:
                     )
 
     forecast = st.session_state.get("forecast_result")
+    notice = st.session_state.get("forecast_notice")
+    error_detail = st.session_state.get("forecast_error_detail")
     if not forecast:
+        if notice:
+            st.warning(notice)
+        if error_detail:
+            with st.expander("Detail error", expanded=False):
+                st.code(error_detail)
         debug_log = st.session_state.get("forecast_debug_log") or []
         if debug_log:
             with st.expander("Debug log", expanded=True):
                 st.code("\n".join(debug_log))
         return
 
-    notice = st.session_state.get("forecast_notice")
     if notice:
         st.warning(notice)
 
-    error_detail = st.session_state.get("forecast_error_detail")
     if error_detail:
         with st.expander("Detail error", expanded=False):
             st.code(error_detail)
