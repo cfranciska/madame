@@ -465,8 +465,11 @@ def post_chat_completion_via_urllib(
 ) -> str:
     body = json.dumps(payload).encode("utf-8")
     last_error: Exception | None = None
+    is_custom_endpoint = "api.openai.com" not in endpoint
+    timeout_seconds = min(DEFAULT_OPENAI_TIMEOUT_SECONDS, 20.0) if is_custom_endpoint else DEFAULT_OPENAI_TIMEOUT_SECONDS
+    retry_count = 1 if is_custom_endpoint else DEFAULT_OPENAI_RETRY_COUNT
 
-    for attempt_index in range(1, DEFAULT_OPENAI_RETRY_COUNT + 1):
+    for attempt_index in range(1, retry_count + 1):
         request = Request(
             endpoint,
             data=body,
@@ -482,22 +485,23 @@ def post_chat_completion_via_urllib(
             if debug_log:
                 debug_log(
                     "post_chat_completion:open "
-                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
-                    f"url={endpoint} timeout={DEFAULT_OPENAI_TIMEOUT_SECONDS}s body_chars={len(body)}"
+                    f"attempt={attempt_index}/{retry_count} "
+                    f"url={endpoint} timeout={timeout_seconds}s body_chars={len(body)} "
+                    f"custom_endpoint={is_custom_endpoint}"
                 )
-            with urlopen(request, timeout=DEFAULT_OPENAI_TIMEOUT_SECONDS) as response:
+            with urlopen(request, timeout=timeout_seconds) as response:
                 status_code = getattr(response, "status", None) or response.getcode()
                 if debug_log:
                     debug_log(
                         "post_chat_completion:headers_received "
-                        f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                        f"attempt={attempt_index}/{retry_count} "
                         f"status={status_code}"
                     )
                 raw = response.read().decode("utf-8")
             if debug_log:
                 debug_log(
                     "post_chat_completion:response_received "
-                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"attempt={attempt_index}/{retry_count} "
                     f"status={status_code} chars={len(raw)}"
                 )
             break
@@ -506,10 +510,10 @@ def post_chat_completion_via_urllib(
             if debug_log:
                 debug_log(
                     "post_chat_completion:http_error "
-                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"attempt={attempt_index}/{retry_count} "
                     f"status={exc.code} reason={exc.reason} details={details[:200]}"
                 )
-            if exc.code in {408, 409, 429, 500, 502, 503, 504} and attempt_index < DEFAULT_OPENAI_RETRY_COUNT:
+            if exc.code in {408, 409, 429, 500, 502, 503, 504} and attempt_index < retry_count:
                 backoff_seconds = attempt_index
                 if debug_log:
                     debug_log(f"post_chat_completion:retrying_in seconds={backoff_seconds}")
@@ -521,10 +525,10 @@ def post_chat_completion_via_urllib(
             if debug_log:
                 debug_log(
                     "post_chat_completion:url_error "
-                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"attempt={attempt_index}/{retry_count} "
                     f"reason_type={type(exc.reason).__name__} reason={exc.reason}"
                 )
-            if attempt_index < DEFAULT_OPENAI_RETRY_COUNT:
+            if attempt_index < retry_count:
                 backoff_seconds = attempt_index
                 if debug_log:
                     debug_log(f"post_chat_completion:retrying_in seconds={backoff_seconds}")
@@ -536,10 +540,10 @@ def post_chat_completion_via_urllib(
             if debug_log:
                 debug_log(
                     "post_chat_completion:timeout "
-                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"attempt={attempt_index}/{retry_count} "
                     f"error_type={type(exc).__name__}"
                 )
-            if attempt_index < DEFAULT_OPENAI_RETRY_COUNT:
+            if attempt_index < retry_count:
                 backoff_seconds = attempt_index
                 if debug_log:
                     debug_log(f"post_chat_completion:retrying_in seconds={backoff_seconds}")
@@ -551,7 +555,7 @@ def post_chat_completion_via_urllib(
             if debug_log:
                 debug_log(
                     "post_chat_completion:unexpected_exception "
-                    f"attempt={attempt_index}/{DEFAULT_OPENAI_RETRY_COUNT} "
+                    f"attempt={attempt_index}/{retry_count} "
                     f"error_type={type(exc).__name__} error={exc}"
                 )
             raise FortuneError(f"Request ke OpenAI gagal: {exc}") from exc

@@ -291,11 +291,55 @@ def ensure_app_state() -> None:
     st.session_state.setdefault("forecast_notice", None)
     st.session_state.setdefault("forecast_error_detail", None)
     st.session_state.setdefault("forecast_debug_log", [])
+    st.session_state.setdefault("forecast_cache", {})
 
 
 def append_debug_log(message: str) -> None:
     timestamp = datetime.now().strftime("%H:%M:%S")
-    st.session_state["forecast_debug_log"].append(f"[{timestamp}] {message}")
+    try:
+        debug_log = st.session_state.setdefault("forecast_debug_log", [])
+        debug_log.append(f"[{timestamp}] {message}")
+    except Exception:
+        # If the Streamlit session is being torn down, skip logging instead of
+        # surfacing an internal SessionInfo error to the user.
+        return
+
+
+def build_forecast_cache_key(
+    *,
+    birth_date: date,
+    birth_time_label: str,
+    birth_place: str,
+    period_label: str,
+    question_focus: str,
+    model: str,
+    base_url: str,
+) -> str:
+    normalized_place = " ".join(birth_place.strip().lower().split())
+    return "|".join(
+        [
+            birth_date.isoformat(),
+            birth_time_label.strip(),
+            normalized_place,
+            period_label.strip(),
+            question_focus.strip(),
+            model.strip(),
+            base_url.strip(),
+        ]
+    )
+
+
+def load_cached_forecast(cache_key: str) -> dict[str, str] | None:
+    cache = st.session_state.get("forecast_cache") or {}
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict):
+        return {str(key): str(value) for key, value in cached.items()}
+    return None
+
+
+def save_cached_forecast(cache_key: str, forecast: dict[str, str]) -> None:
+    cache = st.session_state.setdefault("forecast_cache", {})
+    cache[cache_key] = dict(forecast)
 
 
 def get_setting(name: str, default: str = "") -> str:
@@ -480,6 +524,15 @@ def main() -> None:
                 f"model={model} reasoning={reasoning_effort} base_url={'set' if bool(base_url) else 'default'} "
                 f"openai_enabled={openai_enabled} smoke_test={openai_smoke_test}"
             )
+            cache_key = build_forecast_cache_key(
+                birth_date=birth_date,
+                birth_time_label=birth_time_label,
+                birth_place=birth_place,
+                period_label=period_label,
+                question_focus=question_focus,
+                model=model,
+                base_url=base_url or "",
+            )
 
             if openai_enabled and not api_key:
                 append_debug_log("submit:missing_api_key")
@@ -528,39 +581,58 @@ def main() -> None:
                         )
                     except FortuneError as exc:
                         append_debug_log(f"submit:fortune_error error={exc}")
-                        append_debug_log("submit:using_fallback_fortune")
-                        forecast = generate_fallback_fortune(
-                            birth_date=birth_date,
-                            birth_time=birth_time,
-                            is_birth_time_known=is_birth_time_known,
-                            birth_place=birth_place.strip(),
-                            period_label=period_label,
-                            period_key=PERIOD_OPTIONS[period_label],
-                            question_focus=question_focus,
-                        )
-                        st.session_state["forecast_notice"] = (
-                            f"Model utama gagal membuat ramalan, jadi app memakai fallback lokal. Detail: {exc}"
-                        )
+                        cached_forecast = load_cached_forecast(cache_key)
+                        if cached_forecast:
+                            append_debug_log("submit:using_cached_forecast")
+                            forecast = cached_forecast
+                            st.session_state["forecast_notice"] = (
+                                f"Model utama sedang tidak stabil, jadi app memakai hasil sukses terakhir untuk input yang sama. Detail: {exc}"
+                            )
+                        else:
+                            append_debug_log("submit:using_fallback_fortune")
+                            forecast = generate_fallback_fortune(
+                                birth_date=birth_date,
+                                birth_time=birth_time,
+                                is_birth_time_known=is_birth_time_known,
+                                birth_place=birth_place.strip(),
+                                period_label=period_label,
+                                period_key=PERIOD_OPTIONS[period_label],
+                                question_focus=question_focus,
+                            )
+                            st.session_state["forecast_notice"] = (
+                                f"Model utama gagal membuat ramalan, jadi app memakai fallback lokal. Detail: {exc}"
+                            )
                         st.session_state["forecast_error_detail"] = traceback.format_exc()
                     except Exception:
                         append_debug_log("submit:unexpected_error")
-                        append_debug_log("submit:using_fallback_fortune")
-                        forecast = generate_fallback_fortune(
-                            birth_date=birth_date,
-                            birth_time=birth_time,
-                            is_birth_time_known=is_birth_time_known,
-                            birth_place=birth_place.strip(),
-                            period_label=period_label,
-                            period_key=PERIOD_OPTIONS[period_label],
-                            question_focus=question_focus,
-                        )
-                        st.session_state["forecast_notice"] = (
-                            "Koneksi atau proses engine utama gagal, jadi app memakai fallback lokal. "
-                            "Buka detail error di bawah kalau perlu."
-                        )
+                        cached_forecast = load_cached_forecast(cache_key)
+                        if cached_forecast:
+                            append_debug_log("submit:using_cached_forecast")
+                            forecast = cached_forecast
+                            st.session_state["forecast_notice"] = (
+                                "Koneksi atau proses engine utama sedang tidak stabil, jadi app memakai hasil sukses terakhir untuk input yang sama. "
+                                "Buka detail error di bawah kalau perlu."
+                            )
+                        else:
+                            append_debug_log("submit:using_fallback_fortune")
+                            forecast = generate_fallback_fortune(
+                                birth_date=birth_date,
+                                birth_time=birth_time,
+                                is_birth_time_known=is_birth_time_known,
+                                birth_place=birth_place.strip(),
+                                period_label=period_label,
+                                period_key=PERIOD_OPTIONS[period_label],
+                                question_focus=question_focus,
+                            )
+                            st.session_state["forecast_notice"] = (
+                                "Koneksi atau proses engine utama gagal, jadi app memakai fallback lokal. "
+                                "Buka detail error di bawah kalau perlu."
+                            )
                         st.session_state["forecast_error_detail"] = traceback.format_exc()
                     else:
                         append_debug_log("submit:generate_fortune_ok")
+                        save_cached_forecast(cache_key, forecast)
+                        append_debug_log("submit:forecast_cached")
                         st.session_state["forecast_notice"] = None
                         st.session_state["forecast_error_detail"] = None
                     finally:
