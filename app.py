@@ -1,11 +1,7 @@
 import base64
-import os
-import re
-import traceback
 from datetime import date, datetime, time
 from html import escape
 from pathlib import Path
-from time import perf_counter
 
 import streamlit as st
 
@@ -278,75 +274,35 @@ SECTION_ORDER = [
     "Intinya",
 ]
 
+ERROR_MESSAGE = (
+    "Madame lagi istirahat, tolong jangan diganggu. "
+    "Silakan balik lagi besok, siapa tau toko udah buka lagi beb!"
+)
+
 
 def ensure_app_state() -> None:
     st.session_state.setdefault("forecast_result", None)
+    st.session_state.setdefault("forecast_name", "")
     st.session_state.setdefault("forecast_birth_label", "")
     st.session_state.setdefault("forecast_place", "")
     st.session_state.setdefault("forecast_notice", None)
-    st.session_state.setdefault("forecast_error_detail", None)
-    st.session_state.setdefault("forecast_debug_log", [])
 
-
-def append_debug_log(message: str) -> None:
-    timestamp = datetime.now().strftime("%H:%M:%S")
+def get_openai_settings() -> tuple[str, str, str, str | None]:
     try:
-        debug_log = st.session_state.setdefault("forecast_debug_log", [])
-        debug_log.append(f"[{timestamp}] {message}")
+        api_key = str(st.secrets["OPENAI_API_KEY"]).strip()
     except Exception:
-        # If the Streamlit session is being torn down, skip logging instead of
-        # surfacing an internal SessionInfo error to the user.
-        return
+        st.write(ERROR_MESSAGE)
+        st.stop()
 
-def get_setting(name: str, default: str = "") -> str:
-    value = os.getenv(name)
-    if value:
-        return normalize_setting_value(name, value)
+    if not api_key:
+        st.write(ERROR_MESSAGE)
+        st.stop()
 
-    try:
-        secret_value = st.secrets.get(name)
-    except Exception:
-        secret_value = None
-
-    if secret_value is None:
-        return default
-    return normalize_setting_value(name, str(secret_value))
-
-
-def normalize_setting_value(name: str, value: str) -> str:
-    cleaned = value.strip()
-    if not cleaned:
-        return ""
-
-    if "\n" not in cleaned and "=" not in cleaned:
-        return strip_wrapping_quotes(cleaned)
-
-    extracted = extract_named_assignment(cleaned, name)
-    if extracted is not None:
-        return extracted
-
-    if "\n" not in cleaned:
-        return strip_wrapping_quotes(cleaned)
-
-    return cleaned
-
-
-def extract_named_assignment(blob: str, name: str) -> str | None:
-    pattern = re.compile(rf"(?m)^\s*{re.escape(name)}\s*=\s*(.+?)\s*$")
-    match = pattern.search(blob)
-    if not match:
-        return None
-    return strip_wrapping_quotes(match.group(1).strip())
-
-
-def strip_wrapping_quotes(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-        return value[1:-1].strip()
-    return value
-
-
-def is_truthy(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    model = str(st.secrets.get("OPENAI_MODEL", "gpt-5.4-mini")).strip() or "gpt-5.4-mini"
+    reasoning_effort = str(st.secrets.get("OPENAI_REASONING_EFFORT", "")).strip()
+    base_url_value = str(st.secrets.get("OPENAI_BASE_URL", "")).strip()
+    base_url = base_url_value or None
+    return api_key, model, reasoning_effort, base_url
 
 
 @st.cache_data(show_spinner=False)
@@ -357,17 +313,17 @@ def encode_image(path: str) -> str:
 
 def validate_inputs(
     *,
+    name: str,
     birth_date: date | None,
-    birth_time_label: str | None,
     birth_place: str,
     period_label: str | None,
     question_focus: str | None,
 ) -> list[str]:
     missing_fields: list[str] = []
+    if not name.strip():
+        missing_fields.append("nama")
     if birth_date is None:
         missing_fields.append("tanggal lahir")
-    if not birth_time_label:
-        missing_fields.append("jam lahir")
     if not birth_place.strip():
         missing_fields.append("tempat lahir")
     if not period_label:
@@ -382,7 +338,6 @@ def parse_birth_time(label: str) -> tuple[time | None, bool]:
         return None, False
     return datetime.strptime(label, "%H:%M").time(), True
 
-
 def main() -> None:
     ensure_app_state()
     header_image = encode_image("header.png")
@@ -394,8 +349,8 @@ def main() -> None:
             <div class="hero-title">Madame, help!</div>
             <img class="hero-image" src="data:image/png;base64,{header_image}" alt="madame, damn! header">
             <div class="hero-subtitle-wrap">
-                <p class="hero-subtitle" style="font-size: 10px; line-height: 1.5; color: #ff2e93; font-weight: 500; margin-top: 0.55rem;">
-                    Ringkas dan playful. Menghadirkan ramalan menurut BaZi, western astrology, dan numerologi, lalu dirangkum jadi inti yang saling melengkapi.
+                <p class="hero-subtitle" style="font-size: 12px; line-height: 1.5; color: #ff2e93; font-weight: 500; margin-top: 0.55rem;">
+                    Ringkas dan playful. Menghadirkan ramalan menurut BaZi, Western Astrology, dan Numerologi. Buruan cek tiap hari!
                 </p>
             </div>
         </section>
@@ -407,6 +362,10 @@ def main() -> None:
         st.markdown('<div class="section-label">SPILL SPILL SPILL!</div>', unsafe_allow_html=True)
 
         with st.form("fortune_form"):
+            name = st.text_input(
+                "Nama",
+                placeholder="Tulis nama kamu",
+            )
             col1, col2 = st.columns([1.2, 1])
             with col1:
                 birth_date = st.date_input(
@@ -424,7 +383,7 @@ def main() -> None:
 
             birth_place = st.text_input(
                 "Tempat lahir",
-                placeholder="Contoh: Bandung, Indonesia (wajib di isi)",
+                placeholder="Contoh: Jakarta, Indonesia",
             )
             period_label = st.selectbox(
                 "Ramalan untuk",
@@ -439,123 +398,66 @@ def main() -> None:
             submitted = st.form_submit_button("Buka ramalannya", use_container_width=True)
 
     if submitted:
-        started_at = perf_counter()
         st.session_state["forecast_result"] = None
+        st.session_state["forecast_name"] = ""
         st.session_state["forecast_birth_label"] = ""
         st.session_state["forecast_place"] = ""
         st.session_state["forecast_notice"] = None
-        st.session_state["forecast_error_detail"] = None
-        st.session_state["forecast_debug_log"] = []
-        append_debug_log("submit:start")
+
+        resolved_birth_place = birth_place.strip()
 
         missing_fields = validate_inputs(
+            name=name,
             birth_date=birth_date,
-            birth_time_label=birth_time_label,
-            birth_place=birth_place,
+            birth_place=resolved_birth_place,
             period_label=period_label,
             question_focus=question_focus,
         )
         if missing_fields:
-            append_debug_log(f"submit:validation_failed missing={', '.join(missing_fields)}")
             st.error(
                 "Data kurang lengkap. Mohon lengkapi: "
                 + ", ".join(missing_fields)
                 + "."
             )
         else:
-            append_debug_log("submit:validation_ok")
+            cleaned_name = name.strip()
             birth_time, is_birth_time_known = parse_birth_time(birth_time_label)
-            append_debug_log(
-                f"submit:birth_time_parsed known={is_birth_time_known} value={birth_time_label}"
-            )
 
-            api_key = get_setting("OPENAI_API_KEY")
-            model = get_setting("OPENAI_MODEL", "gpt-5.4-mini")
-            reasoning_effort = get_setting("OPENAI_REASONING_EFFORT", "")
-            base_url = get_setting("OPENAI_BASE_URL")
-            openai_enabled = is_truthy(get_setting("OPENAI_ENABLED", "false"))
-            remote_enabled = openai_enabled or bool(api_key) or bool(base_url)
-            append_debug_log(
-                f"submit:settings_loaded api_key={'yes' if bool(api_key) else 'no'} "
-                f"model={model} reasoning={reasoning_effort} base_url={'set' if bool(base_url) else 'default'} "
-                f"openai_enabled={openai_enabled} remote_enabled={remote_enabled}"
-            )
+            api_key, model, reasoning_effort, base_url = get_openai_settings()
             with st.spinner("Madame sedang menyusun arah energimu..."):
                 forecast = None
                 try:
-                    if remote_enabled:
-                        append_debug_log("submit:generate_fortune_start")
-                        forecast = fortune_engine.generate_fortune(
-                            api_key=api_key,
-                            model=model,
-                            reasoning_effort=reasoning_effort,
-                            base_url=base_url or None,
-                            birth_date=birth_date,
-                            birth_time=birth_time,
-                            is_birth_time_known=is_birth_time_known,
-                            birth_place=birth_place.strip(),
-                            period_label=period_label,
-                            period_key=PERIOD_OPTIONS[period_label],
-                            question_focus=question_focus,
-                            debug_log=append_debug_log,
-                        )
-                        append_debug_log("submit:generate_fortune_ok")
-                        st.session_state["forecast_notice"] = None
-                        st.session_state["forecast_error_detail"] = None
-                    else:
-                        append_debug_log("submit:generate_fallback_fortune_start")
-                        forecast = fortune_engine.generate_fallback_fortune(
-                            birth_date=birth_date,
-                            birth_time=birth_time,
-                            is_birth_time_known=is_birth_time_known,
-                            birth_place=birth_place.strip(),
-                            period_label=period_label,
-                            period_key=PERIOD_OPTIONS[period_label],
-                            question_focus=question_focus,
-                        )
-                        append_debug_log("submit:generate_fallback_fortune_ok")
-                        st.session_state["forecast_notice"] = (
-                            "API belum dikonfigurasi, jadi app pakai fallback sederhana."
-                        )
-                        st.session_state["forecast_error_detail"] = None
+                    forecast = fortune_engine.generate_fortune(
+                        api_key=api_key,
+                        model=model,
+                        reasoning_effort=reasoning_effort,
+                        base_url=base_url,
+                        name=cleaned_name,
+                        birth_date=birth_date,
+                        birth_time=birth_time,
+                        is_birth_time_known=is_birth_time_known,
+                        birth_place=resolved_birth_place,
+                        period_label=period_label,
+                        period_key=PERIOD_OPTIONS[period_label],
+                        question_focus=question_focus,
+                    )
+                    st.session_state["forecast_notice"] = None
                 except Exception:
-                    primary_error = traceback.format_exc()
-                    if remote_enabled:
-                        append_debug_log("submit:generate_fortune_failed_try_fallback")
-                        try:
-                            forecast = fortune_engine.generate_fallback_fortune(
-                                birth_date=birth_date,
-                                birth_time=birth_time,
-                                is_birth_time_known=is_birth_time_known,
-                                birth_place=birth_place.strip(),
-                                period_label=period_label,
-                                period_key=PERIOD_OPTIONS[period_label],
-                                question_focus=question_focus,
-                            )
-                        except Exception:
-                            append_debug_log("submit:fallback_after_remote_failed")
-                            st.session_state["forecast_notice"] = (
-                                "Model remote dan fallback lokal sama-sama gagal. Buka detail error di bawah kalau perlu."
-                            )
-                            st.session_state["forecast_error_detail"] = (
-                                primary_error
-                                + "\n\n=== FALLBACK ERROR ===\n\n"
-                                + traceback.format_exc()
-                            )
-                        else:
-                            append_debug_log("submit:fallback_after_remote_ok")
-                            st.session_state["forecast_notice"] = (
-                                "Model remote sempat gagal, jadi app lanjut pakai fallback sederhana."
-                            )
-                            st.session_state["forecast_error_detail"] = primary_error
-                    else:
-                        append_debug_log("submit:unexpected_error")
-                        st.session_state["forecast_notice"] = (
-                            "Fallback lokal gagal membuat ramalan. Buka detail error di bawah kalau perlu."
+                    try:
+                        forecast = fortune_engine.generate_fallback_fortune(
+                            name=cleaned_name,
+                            birth_date=birth_date,
+                            birth_time=birth_time,
+                            is_birth_time_known=is_birth_time_known,
+                            birth_place=resolved_birth_place,
+                            period_label=period_label,
+                            period_key=PERIOD_OPTIONS[period_label],
+                            question_focus=question_focus,
                         )
-                        st.session_state["forecast_error_detail"] = primary_error
-                finally:
-                    append_debug_log("submit:spinner_done")
+                    except Exception:
+                        st.session_state["forecast_notice"] = ERROR_MESSAGE
+                    else:
+                        st.session_state["forecast_notice"] = None
 
                 if forecast:
                     if birth_time is not None:
@@ -564,35 +466,27 @@ def main() -> None:
                         local_birth_label = f"{birth_date.strftime('%d %b %Y')} (jam tidak diketahui)"
 
                     st.session_state["forecast_result"] = forecast
+                    st.session_state["forecast_name"] = cleaned_name
                     st.session_state["forecast_birth_label"] = local_birth_label
-                    st.session_state["forecast_place"] = birth_place.strip()
-                    append_debug_log(
-                        f"submit:result_saved elapsed={perf_counter() - started_at:.2f}s sections={len(forecast)}"
-                    )
+                    st.session_state["forecast_place"] = resolved_birth_place
 
     forecast = st.session_state.get("forecast_result")
     notice = st.session_state.get("forecast_notice")
-    error_detail = st.session_state.get("forecast_error_detail")
+    forecast_name = st.session_state.get("forecast_name", "").strip()
     if not forecast:
         if notice:
-            st.warning(notice)
-        if error_detail:
-            with st.expander("Detail error", expanded=False):
-                st.code(error_detail)
-        debug_log = st.session_state.get("forecast_debug_log") or []
-        if debug_log:
-            with st.expander("Debug log", expanded=True):
-                st.code("\n".join(debug_log))
+            st.write(notice)
         return
 
     if notice:
-        st.warning(notice)
+        st.write(notice)
 
-    if error_detail:
-        with st.expander("Detail error", expanded=False):
-            st.code(error_detail)
-
-    st.markdown('<div class="section-label">SINGKAP RAMALANNYA</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">RAHASIA AKAN TERUNGKAP!</div>', unsafe_allow_html=True)
+    if forecast_name:
+        st.markdown(
+            f"<p class='footnote'>Ini ramalan buat <strong>{escape(forecast_name)}</strong>, obviously.</p>",
+            unsafe_allow_html=True,
+        )
     for section in SECTION_ORDER:
         content = escape(forecast.get(section, "").strip())
         if not content:
@@ -610,17 +504,11 @@ def main() -> None:
 
     st.markdown(
         (
-            f"<p class='footnote'>Input diproses dari waktu lokal kelahiran "
-            f"{escape(st.session_state['forecast_birth_label'])} di {escape(st.session_state['forecast_place'])} "
-            f"dengan estimasi zona waktu bila diperlukan.</p>"
+            f"<p class='footnote'>Input yang dipakai: "
+            f"{escape(st.session_state['forecast_birth_label'])} di {escape(st.session_state['forecast_place'])}.</p>"
         ),
         unsafe_allow_html=True,
     )
-
-    debug_log = st.session_state.get("forecast_debug_log") or []
-    if debug_log:
-        with st.expander("Debug log", expanded=False):
-            st.code("\n".join(debug_log))
 
 
 if __name__ == "__main__":

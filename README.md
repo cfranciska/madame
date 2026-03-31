@@ -73,8 +73,18 @@ Lalu set `Main file path` ke `app.py`.
 
 Jangan commit `.streamlit/secrets.toml`. Secret itu hanya untuk local run.
 
+Minimal isi secret seperti ini:
+
+```toml
+OPENAI_API_KEY = "sk-..."
+OPENAI_MODEL = "gpt-5.4-mini"
+OPENAI_REASONING_EFFORT = ""
+# OPENAI_BASE_URL = "https://api.openai.com/v1"
+```
+
 ## Catatan
 
 - `fortune_engine.py` sekarang meneruskan input mentah pengguna langsung ke LLM tanpa geocoding atau konversi lokal.
+- `OPENAI_API_KEY` sekarang wajib tersedia di `.streamlit/secrets.toml`. App akan berhenti kalau secret ini belum ada.
 - Jika jam lahir `Tidak Tahu`, prompt akan menandainya sebagai tidak diketahui agar model tidak terlalu presisi.
 - Output tetap ditampilkan dalam empat bagian tetap, sesuai urutan UI.

@@ -29,6 +29,7 @@ Western Astrology
 Numerologi
 
 Gunakan input pengguna berikut:
+* Nama
 * Tanggal lahir
 * Tahun lahir
 * Jam lahir
@@ -76,25 +77,25 @@ Semua bagian harus merujuk pada periode yang sama.
 
 ATURAN KONTEN
 Gunakan aturan berikut:
-* Gunakan bahasa Indonesia yang cocok untuk generasi millenial dan gen z
+* Gunakan bahasa Indonesia yang tidak terlalu formal dan cocok untuk generasi millenial dan gen z
 * Gunakan gaya ringkas, jelas, mudah dipahami
 * Maksimal 50 kata per bagian
 * Gunakan tone ringan dan sedikit playful
-* Fokus pada arah atau peluang yang spesifik
 * Hindari istilah teknis kompleks
 * Hindari jargon astrologi atau metafisika
 * Hindari pengulangan kalimat antar sistem
 
 BATASAN KEAMANAN
-Jangan membuat prediksi tentang:
-* kematian
-* penyakit serius
-* kecelakaan besar
-* bencana
-* diagnosis medis
-* kepastian masa depan
-* klaim supranatural absolut
-Gunakan bahasa yang bersifat kemungkinan, arah, atau kecenderungan. Kalau ada hal negatif, bisa dikasih hint saja agar waspada.
+Hindari membuat ramalan atau pernyataan eksplisit tentang:
+- kematian
+- penyakit serius
+- kecelakaan besar
+- bencana
+- diagnosis medis
+- kepastian masa depan
+- klaim supranatural yang absolut
+Jika topik tersebut relevan dalam interpretasi, sampaikan secara tidak langsung dengan bahasa yang umum, halus, dan tidak spesifik.
+Fokus pada kewaspadaan atau perhatian, bukan pada prediksi kejadian.
 
 ATURAN OUTPUT
 Keluarkan tepat empat bagian:
@@ -113,6 +114,7 @@ def generate_fortune(
     model: str = DEFAULT_MODEL,
     reasoning_effort: str = DEFAULT_REASONING_EFFORT,
     base_url: str | None = None,
+    name: str,
     birth_date: date,
     birth_time: time | None,
     is_birth_time_known: bool,
@@ -126,6 +128,7 @@ def generate_fortune(
         debug_log("generate_fortune:start")
 
     user_prompt = build_user_prompt(
+        name=name,
         birth_date=birth_date,
         birth_time=birth_time,
         is_birth_time_known=is_birth_time_known,
@@ -180,6 +183,7 @@ def generate_fortune(
 
 def generate_fallback_fortune(
     *,
+    name: str,
     birth_date: date,
     birth_time: time | None,
     is_birth_time_known: bool,
@@ -205,10 +209,11 @@ def generate_fallback_fortune(
     focus_label = focus_map.get(question_focus, question_focus.lower())
     birth_time_label = birth_time.strftime("%H:%M") if is_birth_time_known and birth_time is not None else "tidak diketahui"
     place_label = birth_place.strip() or "tempat lahir yang kamu isi"
+    name_label = name.strip() or "kamu"
 
     sections = {
         "BaZi": (
-            f"Untuk {period_phrase}, bacaan BaZi kamu paling kuat saat fokusmu nggak pecah ke terlalu banyak arah. "
+            f"Untuk {period_phrase}, {name_label}, bacaan BaZi kamu paling kuat saat fokusmu nggak pecah ke terlalu banyak arah. "
             f"Pakai pertanyaan soal {focus_label} sebagai kompas utama, dan biarkan detail lain menyusul pelan-pelan."
         ),
         "Western Astrology": (
@@ -220,7 +225,7 @@ def generate_fallback_fortune(
             f"Untuk urusan {focus_label}, langkah kecil yang konsisten sekarang lebih kepakai daripada keputusan yang kelihatan dramatis."
         ),
         "Intinya": (
-            f"Benang merahnya: {period_phrase} paling enak dipakai buat beresin fokus, pilih yang penting dulu, lalu gerak secukupnya tapi jelas. "
+            f"Benang merahnya: {period_phrase} paling enak dipakai buat beresin fokus, pilih yang penting dulu, lalu gerak secukupnya tapi jelas, {name_label}. "
             f"Nggak harus heboh, yang penting terasa pas buat kamu."
         ),
     }
@@ -447,6 +452,7 @@ def clean_json_payload(content: str) -> str:
 
 def build_user_prompt(
     *,
+    name: str,
     birth_date: date,
     birth_time: time | None,
     is_birth_time_known: bool,
@@ -459,6 +465,7 @@ def build_user_prompt(
     return f"""Berikut input pengguna mentah. Gunakan sebagai satu-satunya konteks input.
 
 Input pengguna:
+- Nama: {name}
 - Tanggal lahir: {birth_date.isoformat()}
 - Jam lahir: {birth_time_label}
 - Tempat lahir: {birth_place}
