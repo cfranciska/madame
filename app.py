@@ -305,7 +305,6 @@ def get_openai_settings() -> tuple[str, str, str, str | None]:
     return api_key, model, reasoning_effort, base_url
 
 
-@st.cache_data(show_spinner=False)
 def encode_image(path: str) -> str:
     image_bytes = Path(path).read_bytes()
     return base64.b64encode(image_bytes).decode("utf-8")
@@ -398,11 +397,12 @@ def main() -> None:
             submitted = st.form_submit_button("Buka ramalannya", use_container_width=True)
 
     if submitted:
-        st.session_state["forecast_result"] = None
-        st.session_state["forecast_name"] = ""
-        st.session_state["forecast_birth_label"] = ""
-        st.session_state["forecast_place"] = ""
         st.session_state["forecast_notice"] = None
+#        st.session_state["forecast_result"] = None
+#        st.session_state["forecast_name"] = ""
+#        st.session_state["forecast_birth_label"] = ""
+#        st.session_state["forecast_place"] = ""
+#        st.session_state["forecast_notice"] = None
 
         resolved_birth_place = birth_place.strip()
 
