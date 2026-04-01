@@ -403,7 +403,6 @@ def main() -> None:
 
     if submitted:
         st.session_state["forecast_notice"] = None
-        st.session_state["is_generating"] = True
 #        st.session_state["forecast_result"] = None
 #        st.session_state["forecast_name"] = ""
 #        st.session_state["forecast_birth_label"] = ""
@@ -431,6 +430,7 @@ def main() -> None:
 
             api_key, model, reasoning_effort, base_url = get_openai_settings()
             with st.spinner("Madame sedang menyusun arah energimu..."):
+                st.session_state["is_generating"] = True
                 forecast = None
                 try:
                     forecast = fortune_engine.generate_fortune(
