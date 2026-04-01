@@ -397,8 +397,7 @@ def main() -> None:
 
             submitted = st.form_submit_button(
                 "Buka ramalannya",
-                use_container_width=True,
-                disabled=st.session_state["is_generating"]
+                use_container_width=True
             )
 
     if submitted:
