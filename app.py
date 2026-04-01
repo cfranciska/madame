@@ -286,6 +286,7 @@ def ensure_app_state() -> None:
     st.session_state.setdefault("forecast_birth_label", "")
     st.session_state.setdefault("forecast_place", "")
     st.session_state.setdefault("forecast_notice", None)
+    st.session_state.setdefault("session_ready", False)
 
 def get_openai_settings() -> tuple[str, str, str, str | None]:
     try:
@@ -397,6 +398,11 @@ def main() -> None:
             submitted = st.form_submit_button("Buka ramalannya", use_container_width=True)
 
     if submitted:
+        # guard: pastikan session sudah fully initialized
+        if not st.session_state.get("session_ready"):
+            st.session_state["session_ready"] = True
+            st.rerun()
+
         st.session_state["forecast_notice"] = None
 #        st.session_state["forecast_result"] = None
 #        st.session_state["forecast_name"] = ""
