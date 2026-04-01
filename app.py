@@ -486,14 +486,19 @@ def main() -> None:
     forecast = st.session_state.get("forecast_result")
     notice = st.session_state.get("forecast_notice")
     forecast_name = st.session_state.get("forecast_name", "").strip()
-
+    
     if not forecast:
+    
+        # jika belum pernah submit, jangan tampilkan error
+        if not st.session_state.get("forecast_notice"):
+            return
+    
         if notice:
             st.write(notice)
         else:
-            st.error("Ramalan gagal dibuat. Silakan coba lagi.")
+            st.error("Ramalan gagal dibuat. Silakan klik lagi.")
+    
         return
-
 
     if notice:
         st.write(notice)
