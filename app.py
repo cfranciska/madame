@@ -286,7 +286,7 @@ def ensure_app_state() -> None:
     st.session_state.setdefault("forecast_birth_label", "")
     st.session_state.setdefault("forecast_place", "")
     st.session_state.setdefault("forecast_notice", None)
-    st.session_state.setdefault("session_ready", False)
+    st.session_state.setdefault("is_generating", False)
 
 def get_openai_settings() -> tuple[str, str, str, str | None]:
     try:
@@ -395,15 +395,15 @@ def main() -> None:
                 index=0,
             )
 
-            submitted = st.form_submit_button("Buka ramalannya", use_container_width=True)
+            submitted = st.form_submit_button(
+                "Buka ramalannya",
+                use_container_width=True,
+                disabled=st.session_state["is_generating"]
+            )
 
     if submitted:
-        # guard: pastikan session sudah fully initialized
-        if not st.session_state.get("session_ready"):
-            st.session_state["session_ready"] = True
-            st.rerun()
-
         st.session_state["forecast_notice"] = None
+        st.session_state["is_generating"] = True
 #        st.session_state["forecast_result"] = None
 #        st.session_state["forecast_name"] = ""
 #        st.session_state["forecast_birth_label"] = ""
@@ -462,8 +462,12 @@ def main() -> None:
                         )
                     except Exception:
                         st.session_state["forecast_notice"] = ERROR_MESSAGE
+
                     else:
                         st.session_state["forecast_notice"] = None
+
+                finally:
+                    st.session_state["is_generating"] = False
 
                 if forecast:
                     if birth_time is not None:
