@@ -469,6 +469,10 @@ def main() -> None:
                 finally:
                     st.session_state["is_generating"] = False
 
+                # TAMBAHAN INI
+                if forecast is None:
+                    st.session_state["forecast_notice"] = ERROR_MESSAGE
+
                 if forecast:
                     if birth_time is not None:
                         local_birth_label = datetime.combine(birth_date, birth_time).strftime("%d %b %Y %H:%M")
@@ -483,10 +487,14 @@ def main() -> None:
     forecast = st.session_state.get("forecast_result")
     notice = st.session_state.get("forecast_notice")
     forecast_name = st.session_state.get("forecast_name", "").strip()
+
     if not forecast:
         if notice:
             st.write(notice)
+        else:
+            st.error("Ramalan gagal dibuat. Silakan coba lagi.")
         return
+
 
     if notice:
         st.write(notice)
